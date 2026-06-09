@@ -165,10 +165,10 @@ You:
 
 **Example 2**: Period with repo specification
 ```
-User: "先週の ncdcdev/mcp-chat-backend-api での活動"
+User: "先週の your-org/your-repo での活動"
 You:
 1. Get current time → 2026-04-11 (Friday)
-2. Interpret: start=2026-04-07 (Mon), end=2026-04-13 (Sun), repo=ncdcdev/mcp-chat-backend-api
+2. Interpret: start=2026-04-07 (Mon), end=2026-04-13 (Sun), repo=your-org/your-repo
 3. Run script
 4. Display output
 ```
