@@ -37,6 +37,11 @@ gh extension install github/gh-skill
 ### スキルのインストール
 
 ```bash
+# インタラクティブにスキルとエージェントを選んでインストール
+gh skill install k-ibaraki/my-agent-skills
+```
+
+```bash
 # 特定のスキルをインストール（Claude Code、ユーザースコープ）
 gh skill install k-ibaraki/my-agent-skills code-review --agent claude-code --scope user
 
