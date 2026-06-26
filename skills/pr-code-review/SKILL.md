@@ -1,7 +1,7 @@
 ---
-name: code-review
+name: pr-code-review
 allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh api:*), Bash(gh repo view:*)
-description: Code review a pull request
+description: Code review a GitHub pull request and post the findings back to the PR as a review. Use this skill whenever the user asks to review a pull request — in any phrasing or language, e.g. "PRレビューして", "PRをレビューしてください", "プルリクをレビューして", "PR #123 をレビュー", "このPRをコードレビューして", "code review this PR", "review the PR" — with OR without an explicit PR number (when no number is given, detect the PR for the current branch). Also invoked directly via /pr-code-review. Trigger this BEFORE starting any manual review work.
 disable-model-invocation: false
 license: MIT
 ---
@@ -11,12 +11,14 @@ Provide a code review for the given pull request.
 **Language rule**: Write all review content — issue descriptions shown to the user (step 7) and all text posted to GitHub (step 8) — in Japanese, unless the user explicitly requests a different language.
 
 First, determine which PR to review:
-- If the user specified a PR number (eg. `/code-review 1003`), use that number.
+- If the user specified a PR number (eg. `/pr-code-review 1003`), use that number.
 - Otherwise, detect the PR for the current branch: `gh pr view --json number -q .number`. If this fails (not on a branch with a PR), ask the user for the PR number.
 
 To do this, follow these steps precisely:
 
 1. Use a Haiku agent to check if the pull request (a) is closed, (b) is a draft, (c) does not need a code review (eg. because it is an automated pull request, or is very simple and obviously ok), or (d) already has a code review from Claude Code or from your own GitHub account (run `gh api user -q .login` to get your own login, then check reviews for that login). Reviews from other bots (eg. Copilot, Gemini, etc.) or from other human reviewers do NOT make the PR ineligible. If ineligible, do not proceed.
+
+   **Exception — explicit user request:** The (d) check exists mainly to prevent duplicate automated reviews (eg. cron/loop runs). If the user explicitly requested this review (eg. directly invoked the skill or named the PR), a prior review from yourself or Claude Code does NOT make it ineligible — proceed. In that case, if the PR has new commits since your last review, focus the new review on what changed and re-verify previously flagged items. The (a)/(b)/(c) checks still apply.
 
 2. Use another Haiku agent to give you a list of file paths to (but not the contents of) any relevant CLAUDE.md files from the codebase: the root CLAUDE.md file (if one exists), as well as any CLAUDE.md files in the directories whose files the pull request modified.
 
@@ -28,7 +30,9 @@ To do this, follow these steps precisely:
       - Branch name for patterns like `issue123`, `issue-123`, `issue/123`, `feat/issueN...`
       If an Issue number is found, fetch its title and body with `gh issue view <N>`. Return the Issue number, title, and body. If `gh issue view` fails (eg. Issue not found, different repo), treat it as if no Issue was found. If no Issue is found or fetch fails, return `{"issue": null}`.
 
-4. Using the PR summary (from 3a) and Issue content (from 3b), launch 8 parallel Sonnet agents to independently review the change. All agents receive both the PR diff AND the Issue content (if available). The agents should return a list of issues with file path, line number (if applicable), a category label, and the reason each issue was flagged:
+4. Using the PR summary (from 3a) and Issue content (from 3b), launch 8 parallel Sonnet agents to independently review the change. All agents receive both the PR diff AND the Issue content (if available). The agents should return a list of issues with file path, line number (if applicable), a category label, and the reason each issue was flagged.
+
+   **Authoritative state:** Review the PR's remote head, not the local working tree. The local checkout may be behind the PR head (eg. unpushed/unpulled commits), so agents that read files directly (git blame, full-file context in 4c/4e/4h) can see a stale state and report findings that the PR has already fixed. Any on-disk finding that contradicts `gh pr diff` must be reconciled against the diff — the diff (PR head) wins. When in doubt about the current state of a line, fetch it from the PR head ref rather than trusting the working tree.
 
    a. Agent #1 [CLAUDE.md]: Audit the changes to make sure they comply with the CLAUDE.md. Note that CLAUDE.md is guidance for Claude as it writes code, so not all instructions will be applicable during code review. Only flag issues that are clearly relevant to the changed code.
    b. Agent #2 [Bug]: Read the file changes in the pull request, then do a shallow scan for obvious bugs. Avoid reading extra context beyond the changes, focusing just on the changes themselves. Focus on large bugs, and avoid small issues and nitpicks. Ignore likely false positives.
@@ -47,13 +51,13 @@ To do this, follow these steps precisely:
       - **Error propagation**: exceptions that are swallowed silently, failure paths where errors do not reach the caller, cases where a failure produces no observable signal
 
 5. For each issue found in step 4 (except the "no linked Issue" finding which has a fixed score of 50), launch a parallel Haiku agent that takes the PR and issue description, and returns a score indicating confidence that the issue is real and not a false positive. The agent may consult the CLAUDE.md files (from step 2) solely to verify whether an issue is a genuine concern for this project — but CLAUDE.md mention must NOT be used to increase the score. Score on a scale from 0-100 based purely on the likely real-world impact, frequency, and certainty of the issue. The scale is (give this rubric to the agent verbatim):
-   a. 0: Not confident at all. This is a false positive that doesn't stand up to light scrutiny, or is a pre-existing issue.
+   a. 0: Not confident at all. This is a false positive that doesn't stand up to light scrutiny, or is a pre-existing issue. Also score 0 if the "issue" is actually an improvement over the previous behavior — e.g., adding a tiebreaker for deterministic ordering — even if it technically changes existing behavior. If fixing the flagged issue would make things worse than leaving it, score 0.
    b. 25: Somewhat confident. This might be a real issue, but the agent was unable to verify it. The impact in practice is unclear or very limited.
    c. 50: Moderately confident. The agent was able to verify this is a real issue, but it is a nitpick or unlikely to cause problems in practice. Relative to the rest of the PR, it is not very important.
    d. 75: Highly confident. The agent double-checked the issue and verified it is very likely to be hit in practice. The existing approach in the PR is insufficient. The issue will directly impact functionality, reliability, or security.
    e. 100: Absolutely certain. The agent confirmed this is definitely a real issue that will occur frequently. The evidence directly confirms it.
 
-6. Use a Haiku agent to repeat the eligibility check from step 1 (same rules: only your own prior Claude Code review makes it ineligible), to make sure that the pull request is still eligible for code review.
+6. Use a Haiku agent to repeat the eligibility check from step 1 (same rules: only your own prior Claude Code review makes it ineligible, and the same explicit-user-request exception applies), to make sure that the pull request is still eligible for code review.
 
 7. Present issues with score > 0 to the user for confirmation (do NOT show score 0 issues — they are false positives or pre-existing issues). Format as a flat list ordered by score descending — one issue per entry with category label, file path, line number (or "N/A"), score, one-line description, and a risk analysis. Example format:
 
@@ -79,7 +83,7 @@ gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews \
   --method POST \
   --input - << 'EOF'
 {
-  "body": "### Code review\n\n<overall summary or issues not mappable to diff lines>\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\n<sub>- If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>",
+  "body": "### Code review\n\n<overall assessment: 1-2 sentences honestly evaluating the PR quality — if the implementation is solid, say so warmly and directly. Then list any issues not mappable to diff lines.>\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\n<sub>- If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>",
   "event": "COMMENT",
   "comments": [
     {
@@ -94,10 +98,11 @@ EOF
 ```
 
    d. For multi-line inline comments, add `"start_line"` and `"start_side": "RIGHT"` fields alongside `"line"`.
-   e. If ALL issues can be placed as inline comments, the top-level `body` should just contain the summary header and footer (no issue list needed in the body).
+   e. The top-level `body` must always include an honest overall assessment (1-2 sentences) regardless of whether issues exist or whether all issues are inline comments. If the PR is well-implemented, say so genuinely — this provides context for any minor comments that follow.
    f. If NO issues can be placed inline (none of the flagged lines are in the diff), fall back to `gh pr comment` with the standard format below.
    g. Keep each inline comment body brief and self-contained.
    h. Avoid emojis in comment text.
+   i. Inline comment line numbers must match the file at the PR head, which can differ from your local checkout if it is behind. Derive line numbers from `gh pr diff` hunk headers, or fetch the file at the PR head ref — eg. `gh api "repos/{owner}/{repo}/contents/{path}?ref={head_sha}"` (quote the URL so the shell does not glob the `?`). The GitHub API rejects comments whose line is not part of the diff, so confirm the line is in a changed hunk first.
 
 ---
 
@@ -112,8 +117,10 @@ Examples of false positives, for steps 4 and 5:
 - Issues that are called out in CLAUDE.md, but explicitly silenced in the code (eg. due to a lint ignore comment)
 - Changes in functionality that are likely intentional or are directly related to the broader change
 - Real issues, but on lines that the user did not modify in their pull request
+- Findings based on the local working tree that contradict `gh pr diff` — the local checkout may be behind the PR head, so the diff (PR head) is authoritative. Verify the state at the PR head before flagging.
 - Prior PR comments that were already addressed in a subsequent commit or acknowledged by the PR author
 - For Issue-scope findings: partial implementations that are clearly intentional (eg. the PR description says "first step of #N")
+- Changes that are improvements over the previous behavior (eg. adding a tiebreaker column for deterministic pagination ordering). Even if they technically change existing behavior, they should not be flagged — reverting them would be a regression.
 
 Notes:
 
@@ -150,6 +157,8 @@ Found 3 issues:
 ---
 
 ### Code review
+
+<overall assessment: 1-2 sentences honestly describing what is good about this PR. Be specific — mention the implementation approach, test coverage, or design choices that stood out positively.>
 
 No issues found. Checked for bugs, CLAUDE.md compliance, universal engineering concerns, and Issue alignment.
 

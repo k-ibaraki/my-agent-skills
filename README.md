@@ -7,7 +7,7 @@
 
 | スキル | 説明 | インストール |
 |---|---|---|
-| [code-review](skills/code-review/) | PRのコードレビューを実施 | `gh skill install k-ibaraki/my-agent-skills code-review` |
+| [pr-code-review](skills/pr-code-review/) | GitHub PRをレビューして結果をPRに投稿 | `gh skill install k-ibaraki/my-agent-skills pr-code-review` |
 | [create-issue](skills/create-issue/) | GitHub Issueの作成・編集・改善 | `gh skill install k-ibaraki/my-agent-skills create-issue` |
 | [ddg-search](skills/ddg-search/) | DuckDuckGo APIでWeb検索 | `gh skill install k-ibaraki/my-agent-skills ddg-search` |
 | [github-activity-report](skills/github-activity-report/) | GitHub活動レポート生成（スタンドアップ等に） | `gh skill install k-ibaraki/my-agent-skills github-activity-report` |
@@ -43,10 +43,10 @@ gh skill install k-ibaraki/my-agent-skills
 
 ```bash
 # 特定のスキルをインストール（Claude Code、ユーザースコープ）
-gh skill install k-ibaraki/my-agent-skills code-review --agent claude-code --scope user
+gh skill install k-ibaraki/my-agent-skills pr-code-review --agent claude-code --scope user
 
 # プロジェクトスコープでインストール（リポジトリ内の .claude/skills/ に配置）
-gh skill install k-ibaraki/my-agent-skills code-review --agent claude-code --scope project
+gh skill install k-ibaraki/my-agent-skills pr-code-review --agent claude-code --scope project
 
 # 複数スキルを続けてインストール
 gh skill install k-ibaraki/my-agent-skills create-issue --agent claude-code --scope user
@@ -64,13 +64,13 @@ gh skill install k-ibaraki/my-agent-skills self-review --agent claude-code --sco
 
 ```bash
 # インストール前にスキル内容をプレビュー
-gh skill preview k-ibaraki/my-agent-skills code-review
+gh skill preview k-ibaraki/my-agent-skills pr-code-review
 
 # インストール済みスキルをすべて最新版に更新
 gh skill update --all
 
 # 特定のスキルだけ更新
-gh skill update code-review
+gh skill update pr-code-review
 ```
 
 ### スキルの検索
@@ -85,7 +85,7 @@ gh skill search "zenn"
 
 ```bash
 # タグを指定してインストール（安定版に固定したい場合）
-gh skill install k-ibaraki/my-agent-skills code-review@v1.0.0 --agent claude-code --scope user
+gh skill install k-ibaraki/my-agent-skills pr-code-review@v1.0.0 --agent claude-code --scope user
 ```
 
 ### ローカルからインストール
@@ -93,7 +93,7 @@ gh skill install k-ibaraki/my-agent-skills code-review@v1.0.0 --agent claude-cod
 ```bash
 # このリポジトリをクローンしてローカルからインストール
 git clone https://github.com/k-ibaraki/my-agent-skills.git
-gh skill install ./my-agent-skills code-review --from-local --agent claude-code --scope user
+gh skill install ./my-agent-skills pr-code-review --from-local --agent claude-code --scope user
 ```
 
 ---
