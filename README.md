@@ -98,6 +98,17 @@ gh skill install ./my-agent-skills pr-code-review --from-local --agent claude-co
 
 ---
 
+## 同期ポリシー（メンテナ向け）
+
+このリポジトリは `~/.claude/skills/` のローカルスキルを正とし、既に公開済みのスキルのみを同期する。
+
+- 社内リポジトリ名・内部URLは公開しない（`your-org/your-repo` や公開リポジトリの例に置換。可能ならローカル側を先に浄化して差分自体を無くす）
+- frontmatter の `license: MIT` はリポジトリ側でのみ維持する
+- Anthropic 公式由来のスキル（pptx, docx, xlsx, find-skills 等）と `*-workspace` ディレクトリは公開しない
+- 新規スキルの公開は同期作業とは分け、中身の精査を経てから追加する
+
+---
+
 ## ライセンス
 
 [MIT](LICENSE)

@@ -1,13 +1,12 @@
 ---
 name: grill-me
-description: Interview the user relentlessly about a plan or design until reaching shared understanding, resolving each branch of the decision tree. Use when user wants to stress-test a plan, get grilled on their design, or mentions "grill me".
+description: 計画・設計を執拗なインタビューで研ぎ澄ます。ユーザーが「grill-me」「詰めて」「計画を厳しくレビューして」「設計を突っ込んで」「叩いて」と言ったとき、または計画・設計・提案を出して意思決定の穴を洗い出したいときに使用する。
 license: MIT
 ---
 
-Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+計画・設計を研ぎ澄ますための執拗なインタビューを行う。
 
-Ask the questions one at a time.
-
-If a question can be answered by exploring the codebase or any reference material the user provided (repos, documents, slide decks, chat logs, prior artifacts), explore that source first and answer it yourself instead of asking.
-
-When the deliverable is a concrete artifact (a document, deck, design, code) and the user signals "just build it / let me see a draft," stop interviewing and produce the draft — then resume the dialogue over the tangible result.
+1. **下調べ**: 対象の計画・資料・関連コード/リポジトリを先に調査し、質問の質を上げる
+2. **ブロッカー特定**: 回答がないと着工できない意思決定を洗い出し、重要度順に並べる
+3. **1問1答の徹底**: 質問は必ず1問ずつ。各問いに背景・選択肢・推奨案を添え、回答を得てから次の問いへ進む（複数の問いを束ねない）
+4. **決定録**: 全問クローズ後、決定事項の一覧を提示してから作業に入る。決定はプロジェクトのドキュメントにも残す（ADR運用があればADRに、無ければ既存の設計記録の慣習に合わせる）

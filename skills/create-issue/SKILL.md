@@ -52,11 +52,17 @@ if [ -d ".github/ISSUE_TEMPLATE" ]; then
         # List available templates to user
         echo "Available templates:"
         echo "$TEMPLATES" | sed 's|.github/ISSUE_TEMPLATE/||g'
-        # Use template if specified
-        gh issue create --template <template-name>
     fi
 fi
 ```
+
+**`.yml` (issue form) templates need different handling than `.md` templates.** `gh issue create --template <name>` only reliably works non-interactively for plain `.md` templates. For `.yml` issue forms (GitHub's structured form schema), that flag opens an interactive/browser prompt instead of composing with `--title`/`--body` — it is not scriptable. When the matching template is `.yml`:
+
+1. Read the template file directly (`cat .github/ISSUE_TEMPLATE/<name>.yml`) to learn its section structure (the `body:` list's `attributes.label` values, and any `attributes.value` placeholder text).
+2. Construct the `--body` string yourself, mirroring those section headings, via a heredoc passed to `gh issue create --title ... --body "$(cat <<'EOF' ... EOF)"`.
+3. Apply the **Issue Body Writing Guidelines** below to fill in each section's content — the template dictates structure (headings), the guidelines dictate what goes under each heading.
+
+**Verify labels before using them.** `gh issue create --label "a,b"` fails the entire command (including title/body) if *any* named label doesn't exist in the repo — there's no partial success. Run `gh label list` first (or catch the `not found` error and retry without the offending label) rather than assuming template-suggested labels (e.g. a form's default `labels:` field) exist as written.
 
 ### Sub-Issue Creation
 
@@ -173,6 +179,7 @@ Common errors and solutions:
 | `GraphQL: Resource not accessible` | No repository access | Check repository permissions |
 | `Not Found (HTTP 404)` | Issue doesn't exist | Verify issue number |
 | `sub-issue must belong to same repository` | Cross-repo attempt | Both issues must be in same repo |
+| `could not add label: '<name>' not found` | Label doesn't exist in repo (whole command aborts) | Run `gh label list`, drop/replace the missing label, retry |
 
 Always wrap commands in error checks:
 

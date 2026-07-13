@@ -1,7 +1,7 @@
 ---
 name: pr-code-review
 allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh api:*), Bash(gh repo view:*)
-description: Code review a GitHub pull request and post the findings back to the PR as a review. Use this skill whenever the user asks to review a pull request — in any phrasing or language, e.g. "PRレビューして", "PRをレビューしてください", "プルリクをレビューして", "PR #123 をレビュー", "このPRをコードレビューして", "code review this PR", "review the PR" — with OR without an explicit PR number (when no number is given, detect the PR for the current branch). Also invoked directly via /pr-code-review. Trigger this BEFORE starting any manual review work.
+description: Code review a GitHub pull request and post the findings back to the PR as a review. Use this skill whenever the user asks to review OR re-review a pull request — in any phrasing or language, e.g. "PRレビューして", "PRをレビューしてください", "プルリクをレビューして", "PR #123 をレビュー", "このPRをコードレビューして", "再レビューして", "レビュー指摘の修正を確認して", "code review this PR", "review the PR", "re-review the PR" — with OR without an explicit PR number (when no number is given, detect the PR for the current branch). Also invoked directly via /pr-code-review. Trigger this BEFORE starting any manual review work.
 disable-model-invocation: false
 license: MIT
 ---
@@ -12,13 +12,15 @@ Provide a code review for the given pull request.
 
 First, determine which PR to review:
 - If the user specified a PR number (eg. `/pr-code-review 1003`), use that number.
-- Otherwise, detect the PR for the current branch: `gh pr view --json number -q .number`. If this fails (not on a branch with a PR), ask the user for the PR number.
+- Otherwise, detect the PR for the current branch: `gh pr view --json number -q .number`. If this fails (eg. detached HEAD, not on a branch with a PR), run `gh pr list --state open`: if exactly one open PR exists, proceed with it and tell the user which PR was selected so they can correct it; if there are multiple (or zero) open PRs, ask the user for the PR number.
 
 To do this, follow these steps precisely:
 
 1. Use a Haiku agent to check if the pull request (a) is closed, (b) is a draft, (c) does not need a code review (eg. because it is an automated pull request, or is very simple and obviously ok), or (d) already has a code review from Claude Code or from your own GitHub account (run `gh api user -q .login` to get your own login, then check reviews for that login). Reviews from other bots (eg. Copilot, Gemini, etc.) or from other human reviewers do NOT make the PR ineligible. If ineligible, do not proceed.
 
-   **Exception — explicit user request:** The (d) check exists mainly to prevent duplicate automated reviews (eg. cron/loop runs). If the user explicitly requested this review (eg. directly invoked the skill or named the PR), a prior review from yourself or Claude Code does NOT make it ineligible — proceed. In that case, if the PR has new commits since your last review, focus the new review on what changed and re-verify previously flagged items. The (a)/(b)/(c) checks still apply.
+   **Exception — explicit user request:** The (d) check exists mainly to prevent duplicate automated reviews (eg. cron/loop runs). If the user explicitly requested this review (eg. directly invoked the skill, named the PR, or asked to "re-review" /「再レビューして」 / 「レビュー指摘の修正を確認して」), a prior review from yourself or Claude Code does NOT make it ineligible — proceed. The (a)/(b)/(c) checks still apply.
+
+   **Re-review mode:** If a prior review from yourself/Claude Code exists on this PR and new commits were pushed after it, run the rest of this skill in re-review mode: fetch your prior review body, its inline comments, the author's replies, and the fix commits (`gh api repos/{owner}/{repo}/pulls/{N}/reviews`, `.../pulls/{N}/comments`, `git show <sha>`). Focus the review on what changed since the prior review, and switch Agent #4's role as described in step 4d. In the final review body (step 8), lead with the status of prior findings (how many addressed / deferred / remaining).
 
 2. Use another Haiku agent to give you a list of file paths to (but not the contents of) any relevant CLAUDE.md files from the codebase: the root CLAUDE.md file (if one exists), as well as any CLAUDE.md files in the directories whose files the pull request modified.
 
@@ -37,7 +39,7 @@ To do this, follow these steps precisely:
    a. Agent #1 [CLAUDE.md]: Audit the changes to make sure they comply with the CLAUDE.md. Note that CLAUDE.md is guidance for Claude as it writes code, so not all instructions will be applicable during code review. Only flag issues that are clearly relevant to the changed code.
    b. Agent #2 [Bug]: Read the file changes in the pull request, then do a shallow scan for obvious bugs. Avoid reading extra context beyond the changes, focusing just on the changes themselves. Focus on large bugs, and avoid small issues and nitpicks. Ignore likely false positives.
    c. Agent #3 [Bug]: Read the git blame and history of the code modified, to identify any bugs in light of that historical context.
-   d. Agent #4 [Prior feedback]: Find previous pull requests that touched the same files as this PR, then check for any review comments that may also apply to the current changes. To find relevant prior PRs, run `gh pr list --state closed --limit 30 --json number,title,files` and filter to PRs that modified at least one of the same files. Then for the most relevant 2-3 PRs, fetch their review comments with `gh pr view <number> --json reviews,comments`. For each prior comment you find, actively verify whether it was already addressed: check if subsequent commits after that comment modified the relevant code, or if the PR author replied indicating it was resolved. Only flag comments that were NOT already addressed.
+   d. Agent #4 [Prior feedback]: **In re-review mode**, verify each finding from YOUR prior review on this PR against the current head instead: classify as fully addressed (do not flag), partially addressed or unaddressed (re-flag, stating exactly what remains), or intentionally deferred to a tracking issue (do not flag, but verify the issue actually exists). Also flag NEW problems introduced by the fix commits themselves — fixes for review feedback are a common source of fresh regressions. **Otherwise**, find previous pull requests that touched the same files as this PR, then check for any review comments that may also apply to the current changes. To find relevant prior PRs, run `gh pr list --state closed --limit 30 --json number,title,files` and filter to PRs that modified at least one of the same files. Then for the most relevant 2-3 PRs, fetch their review comments with `gh pr view <number> --json reviews,comments`. For each prior comment you find, actively verify whether it was already addressed: check if subsequent commits after that comment modified the relevant code, or if the PR author replied indicating it was resolved. Only flag comments that were NOT already addressed.
    e. Agent #5 [Code comments]: Read code comments in the modified files, and make sure the changes in the pull request comply with any guidance in the comments.
    f. Agent #6 [Issue: scope]: If an Issue was found in step 3b, compare the Issue requirements against the actual PR changes and identify:
       - **Under-scope**: requirements described in the Issue that are not implemented in this PR
@@ -72,6 +74,8 @@ To do this, follow these steps precisely:
    ```
 
    Ask the user: "Found N issues. Please confirm — reply 'post all' to post them as-is, or tell me which ones to skip (e.g. 'skip 2 and 4')." Wait for the user's response before proceeding. If the user asks to skip or modify any issues, update the list accordingly.
+
+   **Fix-here vs separate-issue split:** If the user asks to organize findings (eg. 「別Issueに切り出すものと整理して」), classify each finding by: (a) was it caused by this PR, (b) is the fix small and self-contained, (c) does fixing it properly require changing components shared with code outside this PR's scope. Propose "fix in this PR" for (a)+(b), and "separate issue" only for (c). Do NOT route low-priority self-contained findings to a separate issue — a low-priority issue will be neglected; propose "fix in this PR now, or explicitly drop" instead. Reflect the final classification in the posted comments (mark separate-issue candidates as 別Issue推奨 with the reason).
 
 8. After the user confirms, post the review using the GitHub Pull Request Reviews API via `gh api`. Follow these rules:
    a. Get the repo name first: `gh repo view --json nameWithOwner -q .nameWithOwner`
@@ -164,7 +168,7 @@ No issues found. Checked for bugs, CLAUDE.md compliance, universal engineering c
 
 🤖 Generated with [Claude Code](https://claude.ai/code)
 
-- When linking to code in the review body, follow the following format precisely, otherwise the Markdown preview won't render correctly: https://github.com/anthropics/claude-code/blob/main/package.json#L10-L15
+- When linking to code in the review body, follow the following format precisely, otherwise the Markdown preview won't render correctly: https://github.com/anthropics/claude-code/blob/d4d8fbbb333c627d8fe2c1c583a5ccc26fdb1aed/README.md#L10-L15
   - Requires full git sha
   - You must provide the full sha. Commands like `https://github.com/owner/repo/blob/$(git rev-parse HEAD)/foo/bar` will not work, since your comment will be directly rendered in Markdown.
   - Repo name must match the repo you're code reviewing
