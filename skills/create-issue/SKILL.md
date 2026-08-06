@@ -1,16 +1,17 @@
 ---
 name: create-issue
 description: >
-  Use this skill for ANY GitHub issue operation: creating new issues, editing or rewriting existing
-  issue body content, improving issue descriptions, adding sub-issues, or closing issues.
+  Use this skill when creating a new GitHub issue, editing or rewriting an existing issue's
+  body, improving issue descriptions, adding sub-issues, or closing issues.
   IMPORTANT: Also use this skill when the user asks to "enrich", "improve", "rewrite", "update",
   or "充実させる" an existing issue — not just when creating new ones. This skill contains
   critical writing guidelines (the "Issue Body Writing Guidelines" section) that govern how
   issue body text should be written for BOTH new and existing issues. The guidelines ensure
   issues delegate implementation decisions to developers rather than prescribing exact steps.
-  Automatically handles gh-sub-issue extension installation.
-allowed-tools: Bash, AskUserQuestion
+  Scope is the issue body only: posting issue comments needs no special handling, so do not
+  invoke this skill for that. Automatically handles gh-sub-issue extension installation.
 license: MIT
+allowed-tools: Bash, AskUserQuestion
 ---
 
 # GitHub Issue Management
@@ -31,8 +32,6 @@ fi
 
 ### Issue Creation
 
-Create a new issue with the following command pattern:
-
 ```bash
 gh issue create \
   --title "Issue title" \
@@ -41,84 +40,38 @@ gh issue create \
   --milestone <number>
 ```
 
-**Template Handling**:
-
-Check for available templates and offer their use:
-
-```bash
-if [ -d ".github/ISSUE_TEMPLATE" ]; then
-    TEMPLATES=$(find .github/ISSUE_TEMPLATE -name "*.md" -o -name "*.yml" 2>/dev/null)
-    if [ -n "$TEMPLATES" ]; then
-        # List available templates to user
-        echo "Available templates:"
-        echo "$TEMPLATES" | sed 's|.github/ISSUE_TEMPLATE/||g'
-    fi
-fi
-```
+**Template Handling**: If `.github/ISSUE_TEMPLATE/` exists, list the templates in it (`.md` / `.yml`) and offer their use.
 
 **`.yml` (issue form) templates need different handling than `.md` templates.** `gh issue create --template <name>` only reliably works non-interactively for plain `.md` templates. For `.yml` issue forms (GitHub's structured form schema), that flag opens an interactive/browser prompt instead of composing with `--title`/`--body` — it is not scriptable. When the matching template is `.yml`:
 
 1. Read the template file directly (`cat .github/ISSUE_TEMPLATE/<name>.yml`) to learn its section structure (the `body:` list's `attributes.label` values, and any `attributes.value` placeholder text).
 2. Construct the `--body` string yourself, mirroring those section headings, via a heredoc passed to `gh issue create --title ... --body "$(cat <<'EOF' ... EOF)"`.
 3. Apply the **Issue Body Writing Guidelines** below to fill in each section's content — the template dictates structure (headings), the guidelines dictate what goes under each heading.
+4. Check the template's own `labels:` values against **Verify labels before using them** (below) before passing them — forms routinely name labels (eg. `triage`) that were never created in the repo.
 
 **Verify labels before using them.** `gh issue create --label "a,b"` fails the entire command (including title/body) if *any* named label doesn't exist in the repo — there's no partial success. Run `gh label list` first (or catch the `not found` error and retry without the offending label) rather than assuming template-suggested labels (e.g. a form's default `labels:` field) exist as written.
 
-### Sub-Issue Creation
+### Sub-Issues
 
-Create an issue and automatically link it as a sub-issue to a parent:
+Create an issue and link it as a sub-issue to a parent:
 
 ```bash
-# Create the issue
 ISSUE_URL=$(gh issue create --title "Sub-issue title" --body "Description")
 
 # Extract issue number robustly
 ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oE '/([0-9]+)/?$' | grep -oE '[0-9]+')
 
-# Verify extraction succeeded
-if [ -z "$ISSUE_NUM" ]; then
-    echo "✗ Error: Failed to extract issue number from URL: $ISSUE_URL"
-    exit 1
-fi
-
-# Link as sub-issue
-if gh sub-issue add <parent-number> "$ISSUE_NUM"; then
-    echo "✓ Created issue #$ISSUE_NUM and linked as sub-issue of #<parent-number>"
-else
-    echo "✗ Error: Failed to link issue #$ISSUE_NUM as sub-issue"
-    exit 1
-fi
+gh sub-issue add <parent-number> "$ISSUE_NUM"
 ```
 
-### Linking Existing Issue as Sub-Issue
-
-Add an existing issue as a sub-issue to a parent:
+Link or unlink an existing issue:
 
 ```bash
-if gh sub-issue add <parent-number> <child-number>; then
-    echo "✓ Linked issue #<child-number> as sub-issue of #<parent-number>"
-else
-    echo "✗ Error: Failed to link sub-issue (check both issues exist in same repository)"
-    exit 1
-fi
-```
-
-### Removing Sub-Issue Link
-
-Remove sub-issue relationship while keeping the issue open:
-
-```bash
-if gh sub-issue remove <parent-number> <child-number>; then
-    echo "✓ Removed sub-issue link between #<parent-number> and #<child-number>"
-else
-    echo "✗ Error: Failed to remove sub-issue link"
-    exit 1
-fi
+gh sub-issue add <parent-number> <child-number>
+gh sub-issue remove <parent-number> <child-number>
 ```
 
 ### Issue Editing
-
-Modify existing issue properties:
 
 ```bash
 gh issue edit <issue-number> \
@@ -135,37 +88,12 @@ always apply the **Issue Body Writing Guidelines** at the bottom of this skill b
 any content. The guidelines ensure the body delegates implementation decisions to developers
 rather than prescribing exact steps.
 
-Handle edit errors appropriately:
-
-```bash
-if gh issue edit <issue-number> --title "New title"; then
-    echo "✓ Updated issue #<issue-number>"
-else
-    echo "✗ Error: Failed to edit issue (check issue exists and you have write access)"
-    exit 1
-fi
-```
-
 ### Issue Closing
 
-**Important**: Always confirm with user before closing issues using AskUserQuestion tool.
+**Important**: Always confirm with user before closing issues using AskUserQuestion tool. After confirmation:
 
 ```bash
-# Confirm before closing (use AskUserQuestion tool)
-# After confirmation:
-
-if gh issue close <issue-number> --comment "Closing reason"; then
-    echo "✓ Closed issue #<issue-number>"
-else
-    echo "✗ Error: Failed to close issue"
-    exit 1
-fi
-```
-
-For simple close without comment:
-
-```bash
-gh issue close <issue-number>
+gh issue close <issue-number> --comment "Closing reason"
 ```
 
 ### Error Handling
@@ -181,48 +109,13 @@ Common errors and solutions:
 | `sub-issue must belong to same repository` | Cross-repo attempt | Both issues must be in same repo |
 | `could not add label: '<name>' not found` | Label doesn't exist in repo (whole command aborts) | Run `gh label list`, drop/replace the missing label, retry |
 
-Always wrap commands in error checks:
-
-```bash
-if ! <command>; then
-    echo "✗ Error: <descriptive message>"
-    exit 1
-fi
-```
-
 ## Output Format
 
-Use consistent output messages:
-
-**Success messages:**
-```
-✓ Created issue #XX: https://github.com/owner/repo/issues/XX
-✓ Linked issue #YY as sub-issue of #XX
-✓ Updated issue #XX
-✓ Closed issue #XX
-✓ Removed sub-issue link between #XX and #YY
-```
-
-**Error messages:**
-```
-✗ Error: <specific error description>
-```
+Report each operation result in one line: `✓ <action> #XX: <URL>` on success, `✗ Error: <specific description>` on failure.
 
 ## Examples
 
-### Example 1: Basic Issue Creation
-
-```
-User: Create an issue titled "Fix login bug"
-
-Execute:
-gh issue create --title "Fix login bug" --body "Users cannot log in with email"
-
-Output:
-✓ Created issue #123: https://github.com/owner/repo/issues/123
-```
-
-### Example 2: Sub-Issue Creation with Parent
+### Example 1: Sub-Issue Creation with Parent
 
 ```
 User: Create a sub-issue of #38 titled "Improve token efficiency"
@@ -245,37 +138,7 @@ Output:
 ✓ Linked issue #44 as sub-issue of #38
 ```
 
-### Example 3: Link Existing Issue as Sub-Issue
-
-```
-User: Make issue #47 a sub-issue of #38
-
-Execute:
-if ! gh extension list | grep -q "yahsan2/gh-sub-issue"; then
-    gh extension install yahsan2/gh-sub-issue
-fi
-
-gh sub-issue add 38 47
-
-Output:
-✓ Linked issue #47 as sub-issue of #38
-```
-
-### Example 4: Edit Issue Title and Labels
-
-```
-User: Change issue #47 title to "Range expansion feature review" and add "enhancement" label
-
-Execute:
-gh issue edit 47 \
-  --title "Range expansion feature review" \
-  --add-label "enhancement"
-
-Output:
-✓ Updated issue #47
-```
-
-### Example 5: Close Issue with Confirmation
+### Example 2: Close Issue with Confirmation
 
 ```
 User: Close issue #47 as duplicate
@@ -288,18 +151,6 @@ gh issue close 47 --comment "Closing as duplicate of #44"
 
 Output:
 ✓ Closed issue #47
-```
-
-### Example 6: Remove Sub-Issue Link
-
-```
-User: Remove the sub-issue link between #38 and #47
-
-Execute:
-gh sub-issue remove 38 47
-
-Output:
-✓ Removed sub-issue link between #38 and #47
 ```
 
 ## Issue Body Writing Guidelines
@@ -343,15 +194,11 @@ issue の本文は、開発者が単なる作業者にならないよう、**何
 - 「想定される対応内容」には「大まかに以下が考えられるが、実装方法は担当者の判断に委ねる」などの一文を添える
 - 変数名・リソース名・設定値などの具体的な実装詳細は書かない
 - 参考リンクや関連 issue は積極的に記載する（担当者の調査コストを下げる）
+- スコープを限定・分割する場合（ファイル種別・段階など）は、その理由と順序の根拠を本文に記録する（「なぜこれだけ先行するか」を後から追えるようにする）
 
 ## Notes
 
-- **GitHub CLI Required**: Must have `gh` CLI installed and authenticated (`gh auth login`)
-- **Repository Context**: Commands must be run from within a Git repository directory
-- **Sub-Issue Extension**: `yahsan2/gh-sub-issue` extension required for sub-issue operations (auto-installed)
 - **Same Repository**: Parent and child issues must exist in the same repository
-- **Permissions**: Write access required for issue creation/editing, read access sufficient for viewing
 - **Template Priority**: Project templates (`.github/ISSUE_TEMPLATE/`) → Organization templates → No template
 - **Assignee**: Do NOT auto-assign `@me` or any user unless the user explicitly requests it. Assignees should be set only when the user specifies who should handle the issue.
 - **Confirmation**: Always confirm destructive operations (close, delete) using AskUserQuestion tool
-- **Robust Parsing**: Use `grep -oE '/([0-9]+)/?$' | grep -oE '[0-9]+'` for extracting issue numbers from URLs
