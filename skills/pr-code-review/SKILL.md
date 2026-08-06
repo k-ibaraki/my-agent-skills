@@ -12,7 +12,9 @@ Provide a code review for the given pull request.
 
 First, determine which PR to review:
 - If the user specified a PR number (eg. `/pr-code-review 1003`), use that number.
-- Otherwise, detect the PR for the current branch: `gh pr view --json number -q .number`. If this fails (eg. detached HEAD, not on a branch with a PR), run `gh pr list --state open`: if exactly one open PR exists, proceed with it and tell the user which PR was selected so they can correct it; if there are multiple (or zero) open PRs, ask the user for the PR number.
+- Otherwise, detect the PR for the current branch: `gh pr view --json number -q .number`. If this fails (eg. detached HEAD, not on a branch with a PR), first try matching HEAD to a PR branch with `git branch -a --contains HEAD`: if it matches exactly one open PR's branch, proceed with it and tell the user which PR was selected so they can correct it. Otherwise run `gh pr list --state open`: if exactly one open PR exists, proceed with it (same notification); if there are multiple (or zero) open PRs, ask the user for the PR number.
+
+**Pre-agreed findings mode:** If the user brings a list of findings already agreed upon in the current conversation (eg. 「今回の指摘内容を投稿して」), skip the discovery phase (steps 2-7) and run only the eligibility check (step 1, lightweight is fine) and the posting step (step 8), using the agreed findings verbatim. This avoids redundant re-discovery and prevents the posted content from diverging from what the user approved.
 
 To do this, follow these steps precisely:
 
@@ -32,14 +34,16 @@ To do this, follow these steps precisely:
       - Branch name for patterns like `issue123`, `issue-123`, `issue/123`, `feat/issueN...`
       If an Issue number is found, fetch its title and body with `gh issue view <N>`. Return the Issue number, title, and body. If `gh issue view` fails (eg. Issue not found, different repo), treat it as if no Issue was found. If no Issue is found or fetch fails, return `{"issue": null}`.
 
-4. Using the PR summary (from 3a) and Issue content (from 3b), launch 8 parallel Sonnet agents to independently review the change. All agents receive both the PR diff AND the Issue content (if available). The agents should return a list of issues with file path, line number (if applicable), a category label, and the reason each issue was flagged.
+4. Using the PR summary (from 3a) and Issue content (from 3b), launch 8 parallel Sonnet agents to independently review the change. All agents receive both the PR diff AND the Issue content (if available). The agents should return a list of issues with file path, line number (if applicable), a category label, and the reason each issue was flagged. If the user requested additional review perspectives (eg. via ARGUMENTS), add one dedicated agent per perspective alongside the 8 below, and carry its findings through steps 5-8 like any other; instruct its scoring agent that the perspective was user-requested (do not dismiss findings wholesale as nitpicks, but still verify each one strictly).
 
-   **Authoritative state:** Review the PR's remote head, not the local working tree. The local checkout may be behind the PR head (eg. unpushed/unpulled commits), so agents that read files directly (git blame, full-file context in 4c/4e/4h) can see a stale state and report findings that the PR has already fixed. Any on-disk finding that contradicts `gh pr diff` must be reconciled against the diff — the diff (PR head) wins. When in doubt about the current state of a line, fetch it from the PR head ref rather than trusting the working tree.
+   **Same-PR dedup (do this BEFORE fanning out):** Fetch the existing review comments on THIS PR and the author's replies (`gh api repos/{owner}/{repo}/pulls/{N}/comments --paginate`, `gh api repos/{owner}/{repo}/issues/{N}/comments`). Build a compact "already raised / claimed fixed / explicitly deferred" list and hand it to every agent in step 4, instructing them that a finding matching the list may only be reported with line-level evidence that it is still present at head — otherwise a PR that already carries bot reviews yields mostly duplicates. (Step 4d's default role covers *prior* PRs, not this one.)
+
+   **Authoritative state:** Review the PR's remote head, not the local working tree — the local checkout may be behind, so agents that read files directly (git blame, full-file context in 4c/4e/4h) can see a stale state. Any on-disk finding that contradicts `gh pr diff` must be reconciled against the diff (the PR head wins); when in doubt about a line, fetch it from the PR head ref.
 
    a. Agent #1 [CLAUDE.md]: Audit the changes to make sure they comply with the CLAUDE.md. Note that CLAUDE.md is guidance for Claude as it writes code, so not all instructions will be applicable during code review. Only flag issues that are clearly relevant to the changed code.
    b. Agent #2 [Bug]: Read the file changes in the pull request, then do a shallow scan for obvious bugs. Avoid reading extra context beyond the changes, focusing just on the changes themselves. Focus on large bugs, and avoid small issues and nitpicks. Ignore likely false positives.
    c. Agent #3 [Bug]: Read the git blame and history of the code modified, to identify any bugs in light of that historical context.
-   d. Agent #4 [Prior feedback]: **In re-review mode**, verify each finding from YOUR prior review on this PR against the current head instead: classify as fully addressed (do not flag), partially addressed or unaddressed (re-flag, stating exactly what remains), or intentionally deferred to a tracking issue (do not flag, but verify the issue actually exists). Also flag NEW problems introduced by the fix commits themselves — fixes for review feedback are a common source of fresh regressions. **Otherwise**, find previous pull requests that touched the same files as this PR, then check for any review comments that may also apply to the current changes. To find relevant prior PRs, run `gh pr list --state closed --limit 30 --json number,title,files` and filter to PRs that modified at least one of the same files. Then for the most relevant 2-3 PRs, fetch their review comments with `gh pr view <number> --json reviews,comments`. For each prior comment you find, actively verify whether it was already addressed: check if subsequent commits after that comment modified the relevant code, or if the PR author replied indicating it was resolved. Only flag comments that were NOT already addressed.
+   d. Agent #4 [Prior feedback]: **In re-review mode**, verify each finding from YOUR prior review on this PR against the current head instead: classify as fully addressed (do not flag), partially addressed or unaddressed (re-flag, stating exactly what remains), or intentionally deferred to a tracking issue (do not flag, but verify the issue actually exists). Also flag NEW problems introduced by the fix commits themselves — fixes for review feedback are a common source of fresh regressions. **Otherwise**, find prior PRs that touched the same files (`gh pr list --state closed --limit 30 --json number,title,files`, filtered to overlapping files), fetch review comments for the most relevant 2-3 with `gh pr view <number> --json reviews,comments`, and check whether each comment also applies to the current changes. Verify whether each prior comment was already addressed (subsequent commits modified the code, or the author replied it was resolved) and only flag those that were NOT.
    e. Agent #5 [Code comments]: Read code comments in the modified files, and make sure the changes in the pull request comply with any guidance in the comments.
    f. Agent #6 [Issue: scope]: If an Issue was found in step 3b, compare the Issue requirements against the actual PR changes and identify:
       - **Under-scope**: requirements described in the Issue that are not implemented in this PR
@@ -59,6 +63,8 @@ To do this, follow these steps precisely:
    d. 75: Highly confident. The agent double-checked the issue and verified it is very likely to be hit in practice. The existing approach in the PR is insufficient. The issue will directly impact functionality, reliability, or security.
    e. 100: Absolutely certain. The agent confirmed this is definitely a real issue that will occur frequently. The evidence directly confirms it.
 
+   Fallback: if a scoring agent fails to launch or return, do NOT block the review or silently drop the finding — score it yourself by reading the flagged code and the finder's evidence against this same rubric.
+
 6. Use a Haiku agent to repeat the eligibility check from step 1 (same rules: only your own prior Claude Code review makes it ineligible, and the same explicit-user-request exception applies), to make sure that the pull request is still eligible for code review.
 
 7. Present issues with score > 0 to the user for confirmation (do NOT show score 0 issues — they are false positives or pre-existing issues). Format as a flat list ordered by score descending — one issue per entry with category label, file path, line number (or "N/A"), score, one-line description, and a risk analysis. Example format:
@@ -74,6 +80,8 @@ To do this, follow these steps precisely:
    ```
 
    Ask the user: "Found N issues. Please confirm — reply 'post all' to post them as-is, or tell me which ones to skip (e.g. 'skip 2 and 4')." Wait for the user's response before proceeding. If the user asks to skip or modify any issues, update the list accordingly.
+
+   **Other requested deliverables:** If the user asked for anything besides the findings (eg. a summary of the change, a limited review scope), present that in step 7 as well, and ask whether it should also be posted to GitHub.
 
    **Fix-here vs separate-issue split:** If the user asks to organize findings (eg. 「別Issueに切り出すものと整理して」), classify each finding by: (a) was it caused by this PR, (b) is the fix small and self-contained, (c) does fixing it properly require changing components shared with code outside this PR's scope. Propose "fix in this PR" for (a)+(b), and "separate issue" only for (c). Do NOT route low-priority self-contained findings to a separate issue — a low-priority issue will be neglected; propose "fix in this PR now, or explicitly drop" instead. Reflect the final classification in the posted comments (mark separate-issue candidates as 別Issue推奨 with the reason).
 
@@ -107,6 +115,7 @@ EOF
    g. Keep each inline comment body brief and self-contained.
    h. Avoid emojis in comment text.
    i. Inline comment line numbers must match the file at the PR head, which can differ from your local checkout if it is behind. Derive line numbers from `gh pr diff` hunk headers, or fetch the file at the PR head ref — eg. `gh api "repos/{owner}/{repo}/contents/{path}?ref={head_sha}"` (quote the URL so the shell does not glob the `?`). The GitHub API rejects comments whose line is not part of the diff, so confirm the line is in a changed hunk first.
+   j. Review event: default to `"event": "COMMENT"`. Use `"APPROVE"` or `"REQUEST_CHANGES"` ONLY when the user explicitly instructs it in this conversation (eg. 「Approveして」, 「Request changesで」) — never infer it from finding severity. When approving with remaining minor findings, note in each comment that it does not block the merge.
 
 ---
 
@@ -115,20 +124,22 @@ Examples of false positives, for steps 4 and 5:
 - Pre-existing issues
 - Something that looks like a bug but is not actually a bug
 - Pedantic nitpicks that a senior engineer wouldn't call out
-- Issues that a linter, typechecker, or compiler would catch (eg. missing or incorrect imports, type errors, broken tests, formatting issues, pedantic style issues like newlines). No need to run these build steps yourself — it is safe to assume that they will be run separately as part of CI.
+- Issues that a linter, typechecker, or compiler would catch (eg. missing or incorrect imports, type errors, broken tests, formatting issues, pedantic style issues like newlines). No need to run these build steps yourself — assume CI runs them separately. Exception: if you have evidence the gate is not actually enforcing (eg. the CI script discards the tool's exit code, or a mandated pre-commit hook was plainly skipped), the violations are worth flagging.
 - General code quality issues (eg. lack of test coverage, poor documentation), unless explicitly required in CLAUDE.md
 - Note: security issues, backward compatibility breaks, and error propagation gaps are NOT false positives — these are explicitly checked by Agent #8
 - Issues that are called out in CLAUDE.md, but explicitly silenced in the code (eg. due to a lint ignore comment)
 - Changes in functionality that are likely intentional or are directly related to the broader change
 - Real issues, but on lines that the user did not modify in their pull request
-- Findings based on the local working tree that contradict `gh pr diff` — the local checkout may be behind the PR head, so the diff (PR head) is authoritative. Verify the state at the PR head before flagging.
+- Findings based on the local working tree that contradict `gh pr diff` — the diff (PR head) is authoritative; verify the state at the PR head before flagging.
 - Prior PR comments that were already addressed in a subsequent commit or acknowledged by the PR author
 - For Issue-scope findings: partial implementations that are clearly intentional (eg. the PR description says "first step of #N")
-- Changes that are improvements over the previous behavior (eg. adding a tiebreaker column for deterministic pagination ordering). Even if they technically change existing behavior, they should not be flagged — reverting them would be a regression.
+- Concerns explicitly deferred to a tracked issue in the PR body or the linked Issue's out-of-scope list (eg. "DoS limits deferred to #NNN") — verify the deferral statement exists, then score 0
+- Changes that are improvements over the previous behavior (eg. adding a tiebreaker column for deterministic pagination ordering) — reverting them would be a regression, so do not flag them even if behavior technically changes
 
 Notes:
 
-- Do not check build signal or attempt to build or typecheck the app. These will run separately, and are not relevant to your code review.
+- Do not check build signal or attempt to build or typecheck the app — these run separately and are not relevant to your review. Never cite CI status as evidence either way: a green check can mean the gate itself is broken, so "CI passed" does not clear a finding and "CI will catch it" does not justify dropping one.
+- Steps 4-5 use subagents by default. A session directive like "do not call the Agent tool unless the user requested it" is conditional, not a prohibition — invoking this skill IS the user requesting this review. Only a hard block (tool absent, permission denied) counts as unavailable; in that case do not skip steps 4-5 — run the same dimensions and 0-100 rubric yourself and say plainly that you ran it single-context. Never describe a conditional directive to the user as a ban.
 - Use `gh` to interact with Github (eg. to fetch a pull request, or to create inline comments), rather than web fetch.
 - Make a todo list first.
 - You must cite and link each bug (eg. if referring to a CLAUDE.md, you must link it).
