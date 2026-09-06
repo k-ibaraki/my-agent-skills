@@ -2,27 +2,22 @@
 name: create-issue
 description: >
   Use this skill when creating a new GitHub issue, editing or rewriting an existing issue's
-  body, improving issue descriptions, adding sub-issues, or closing issues.
-  IMPORTANT: Also use this skill when the user asks to "enrich", "improve", "rewrite", "update",
-  or "充実させる" an existing issue — not just when creating new ones. This skill contains
-  critical writing guidelines (the "Issue Body Writing Guidelines" section) that govern how
-  issue body text should be written for BOTH new and existing issues. The guidelines ensure
-  issues delegate implementation decisions to developers rather than prescribing exact steps.
-  Scope is the issue body only: posting issue comments needs no special handling, so do not
-  invoke this skill for that. Automatically handles gh-sub-issue extension installation.
-license: MIT
+  body, improving issue descriptions, adding sub-issues, or closing issues. IMPORTANT: also
+  use it when the user asks to "enrich", "improve", "rewrite", "update", or "充実させる" an
+  existing issue — the "Issue Body Writing Guidelines" section governs body text for BOTH new
+  and existing issues, ensuring issues delegate implementation decisions to developers rather
+  than prescribing exact steps. Closing includes the case where `gh issue close` is an embedded
+  step of a larger task (e.g. recording a decision on an issue) — consult the "Issue Closing"
+  rules before any close. Scope is the issue body only: posting issue comments needs no special
+  handling, so do not invoke this skill for that. Automatically handles gh-sub-issue extension
+  installation.
 allowed-tools: Bash, AskUserQuestion
+license: MIT
 ---
 
 # GitHub Issue Management
 
-Comprehensive GitHub issue management using gh CLI and sub-issue functionality.
-
-## Instructions
-
-### Prerequisites
-
-Ensure gh-sub-issue extension is installed before using sub-issue functionality:
+## Prerequisites
 
 ```bash
 if ! gh extension list | grep -q "yahsan2/gh-sub-issue"; then
@@ -30,7 +25,7 @@ if ! gh extension list | grep -q "yahsan2/gh-sub-issue"; then
 fi
 ```
 
-### Issue Creation
+## Issue Creation
 
 ```bash
 gh issue create \
@@ -40,38 +35,33 @@ gh issue create \
   --milestone <number>
 ```
 
-**Template Handling**: If `.github/ISSUE_TEMPLATE/` exists, list the templates in it (`.md` / `.yml`) and offer their use.
+**Template handling**: Project templates (`.github/ISSUE_TEMPLATE/`) → organization templates → no template. If templates exist, list them (`.md` / `.yml`) and offer their use.
 
-**`.yml` (issue form) templates need different handling than `.md` templates.** `gh issue create --template <name>` only reliably works non-interactively for plain `.md` templates. For `.yml` issue forms (GitHub's structured form schema), that flag opens an interactive/browser prompt instead of composing with `--title`/`--body` — it is not scriptable. When the matching template is `.yml`:
+**`.yml` (issue form) templates need different handling than `.md` templates.** `gh issue create --template <name>` only works non-interactively for plain `.md` templates; for `.yml` issue forms it opens an interactive/browser prompt instead of composing with `--title`/`--body`. For a `.yml` template:
 
-1. Read the template file directly (`cat .github/ISSUE_TEMPLATE/<name>.yml`) to learn its section structure (the `body:` list's `attributes.label` values, and any `attributes.value` placeholder text).
-2. Construct the `--body` string yourself, mirroring those section headings, via a heredoc passed to `gh issue create --title ... --body "$(cat <<'EOF' ... EOF)"`.
-3. Apply the **Issue Body Writing Guidelines** below to fill in each section's content — the template dictates structure (headings), the guidelines dictate what goes under each heading.
-4. Check the template's own `labels:` values against **Verify labels before using them** (below) before passing them — forms routinely name labels (eg. `triage`) that were never created in the repo.
+1. Read the file (`cat .github/ISSUE_TEMPLATE/<name>.yml`) to learn its section structure (the `body:` list's `attributes.label` values and any `attributes.value` placeholders).
+2. Construct `--body` yourself, mirroring those headings, via a heredoc passed to `gh issue create --title ... --body "$(cat <<'EOF' ... EOF)"`.
+3. Decide whether to apply the template's `title:` prefix (eg. `[タスク]: `) by matching how comparable existing issues — same nature, same tracking method — are titled. Ask the user if the repo is inconsistent.
+4. Apply the **Issue Body Writing Guidelines** below for each section's content — the template dictates structure, the guidelines dictate what goes under each heading.
+5. Check the template's own `labels:` values against the rule below before passing them — forms routinely name labels (eg. `triage`) that were never created in the repo.
 
-**Verify labels before using them.** `gh issue create --label "a,b"` fails the entire command (including title/body) if *any* named label doesn't exist in the repo — there's no partial success. Run `gh label list` first (or catch the `not found` error and retry without the offending label) rather than assuming template-suggested labels (e.g. a form's default `labels:` field) exist as written.
+**Verify labels before using them.** `gh issue create --label "a,b"` fails the entire command (including title/body) if *any* named label doesn't exist — there's no partial success. Run `gh label list` first, or catch the `not found` error and retry without the offending label.
 
-### Sub-Issues
-
-Create an issue and link it as a sub-issue to a parent:
+## Sub-Issues
 
 ```bash
 ISSUE_URL=$(gh issue create --title "Sub-issue title" --body "Description")
-
-# Extract issue number robustly
 ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oE '/([0-9]+)/?$' | grep -oE '[0-9]+')
-
 gh sub-issue add <parent-number> "$ISSUE_NUM"
-```
 
-Link or unlink an existing issue:
-
-```bash
+# Link or unlink an existing issue
 gh sub-issue add <parent-number> <child-number>
 gh sub-issue remove <parent-number> <child-number>
 ```
 
-### Issue Editing
+Parent and child must live in the same repository.
+
+## Issue Editing
 
 ```bash
 gh issue edit <issue-number> \
@@ -83,22 +73,22 @@ gh issue edit <issue-number> \
   --milestone <number>
 ```
 
-**When editing issue body content** (rewriting, improving, or enriching an issue description),
-always apply the **Issue Body Writing Guidelines** at the bottom of this skill before writing
-any content. The guidelines ensure the body delegates implementation decisions to developers
-rather than prescribing exact steps.
+Rewriting, improving, or enriching a body means applying the **Issue Body Writing Guidelines** before writing any content.
 
-### Issue Closing
+Do NOT auto-assign `@me` or anyone else unless the user explicitly says who should handle the issue.
 
-**Important**: Always confirm with user before closing issues using AskUserQuestion tool. After confirmation:
+## Issue Closing
+
+**Important**: Always confirm with the user (AskUserQuestion) before closing. Judge closability by whether the completion condition is met:
+
+- issue の完了がリポジトリへの変更（コード・ドキュメント・規約化など）を伴う場合、その変更がマージされる前に手動クローズしない。PR 本文に `closes #N` と書き、マージによる自動クローズに委ねる（決定をコメントに記録した時点でのクローズは早計）
+- 手動クローズしてよいのは、変更を伴わず issue 上の記録だけで完結する場合（重複・見送り・調査のみ 等）
 
 ```bash
 gh issue close <issue-number> --comment "Closing reason"
 ```
 
-### Error Handling
-
-Common errors and solutions:
+## Error Handling
 
 | Error | Cause | Solution |
 |-------|-------|----------|
@@ -107,100 +97,68 @@ Common errors and solutions:
 | `GraphQL: Resource not accessible` | No repository access | Check repository permissions |
 | `Not Found (HTTP 404)` | Issue doesn't exist | Verify issue number |
 | `sub-issue must belong to same repository` | Cross-repo attempt | Both issues must be in same repo |
-| `could not add label: '<name>' not found` | Label doesn't exist in repo (whole command aborts) | Run `gh label list`, drop/replace the missing label, retry |
+| `could not add label: '<name>' not found` | Label doesn't exist (whole command aborts) | Run `gh label list`, drop/replace the label, retry |
 
 ## Output Format
 
-Report each operation result in one line: `✓ <action> #XX: <URL>` on success, `✗ Error: <specific description>` on failure.
-
-## Examples
-
-### Example 1: Sub-Issue Creation with Parent
-
-```
-User: Create a sub-issue of #38 titled "Improve token efficiency"
-
-Execute:
-# Ensure extension installed
-if ! gh extension list | grep -q "yahsan2/gh-sub-issue"; then
-    gh extension install yahsan2/gh-sub-issue
-fi
-
-# Create issue
-ISSUE_URL=$(gh issue create --title "Improve token efficiency" --body "Reduce response size")
-ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oE '/([0-9]+)/?$' | grep -oE '[0-9]+')
-
-# Link as sub-issue
-gh sub-issue add 38 "$ISSUE_NUM"
-
-Output:
-✓ Created issue #44
-✓ Linked issue #44 as sub-issue of #38
-```
-
-### Example 2: Close Issue with Confirmation
-
-```
-User: Close issue #47 as duplicate
-
-Execute:
-# Use AskUserQuestion tool to confirm
-# After user confirms:
-
-gh issue close 47 --comment "Closing as duplicate of #44"
-
-Output:
-✓ Closed issue #47
-```
+Report each operation in one line: `✓ <action> #XX: <URL>` on success, `✗ Error: <specific description>` on failure.
 
 ## Issue Body Writing Guidelines
 
-issue の本文は、開発者が単なる作業者にならないよう、**何を達成したいか（What）** と **どう実装するかの示唆（How）** を意識的に分けて書く。
+issue の本文は、開発者が単なる作業者にならないよう、**何を達成したいか（What）** と **どう実装するかの示唆（How）** を意識的に分けて書く。実装に着手する頃には issue 作成時より詳細な情報が実施者に見えており、実装方法はその時点の情報をもとに担当者が判断したほうが精度が高いため。
 
 ### 構成の原則
 
-| セクション | 書き方 |
-|---|---|
-| **背景・やりたいこと** | 目的・課題・制約を明確に。達成したいゴールを書く |
-| **想定される対応内容** | 実装の方向性をぼかして示す。箇条書きで What レベルに留める |
-| **実装の詳細** | 原則として書かない。担当者が判断する領域 |
+| セクション | 必須度 | 書き方 |
+|---|---|---|
+| **背景・やりたいこと** | 必須 | 目的・課題・制約を明確に。達成したいゴールを書く |
+| **想定される対応内容** | 実質必須 | 実装の方向性をぼかして示す。箇条書きで What レベルに留める。方針自体が固まっていない場合は無理に埋めず、未確定である旨を書いて省略してよい |
+| **対象外・やらないこと** | 任意 | スコープ外を明示し、意図と異なる実装が進むのを防ぐ。隣接範囲との混同が起きうる場合のみ書く |
+| **受け入れ条件** | 任意 | 満たすべき状態・振る舞いを書く。特定の実装手段を指定しない |
+| **実装の詳細** | 原則として書かない | 担当者が判断する領域 |
 
 ### 良い例と悪い例
 
 **❌ 悪い例（作業指示になっている）**:
 ```
 ## 対応内容
-- variables.tf に gcs_temp_mount_enabled 変数を追加（type: bool, default: false）
-- storage.tf に google_storage_bucket リソースを追加し lifecycle_rule で age=1 を設定
-- cloudrun.tf の template に execution_environment = "EXECUTION_ENVIRONMENT_GEN2" を追加
+- config.py に JOB_QUEUE_ENABLED 変数を追加（type: bool, default: false）
+- queue.py に JobQueue クラスを追加し max_retries=3 を設定
+- worker.py の起動処理に queue.start_consumer() の呼び出しを追加
 ```
 
 **✅ 良い例（考える余地がある）**:
 ```
 ## やりたいこと
-- GCSFuse マウントの構成を Terraform で管理する
-- 必要なテナントのみ有効化できるようにする（デフォルト無効）
+- 重い処理を非同期ジョブキューに逃がし、リクエストの応答時間を短縮する
+- 既存の同期処理から段階的に移行できるようにする（デフォルト無効）
 
 ## 想定される対応内容
 大まかに以下のような変更が考えられるが、実装方法は担当者の判断に委ねる。
-- **変数追加**: マウントの有効/無効を切り替えるフラグ
-- **バケット作成**: 一時ファイル用 GCS バケット（残留ファイルの自動削除も考慮）
-- **IAM**: 最小権限の原則に従った書き込み権限付与
-- **Cloud Run**: GCSFuse に必要な設定の追加
+- **フラグ追加**: 非同期化の有効/無効を切り替える設定
+- **キューの導入**: リトライ・失敗時の扱いも含めた設計
+- **権限**: 最小権限の原則に従ったアクセス権付与
+- **呼び出し側の変更**: 既存の同期処理からの移行方法
+
+## 対象外
+- 既存の同期 API のインターフェース変更は行わない
+
+## 受け入れ条件
+- [ ] 対象の重い処理が非同期ジョブキュー経由で実行される
+- [ ] 移行前の同期処理と比較して、リクエストの応答時間が短縮されている
 ```
 
 ### ポイント
 
-- 「想定される対応内容」には「大まかに以下が考えられるが、実装方法は担当者の判断に委ねる」などの一文を添える
-- 変数名・リソース名・設定値などの具体的な実装詳細は書かない
 - 参考リンクや関連 issue は積極的に記載する（担当者の調査コストを下げる）
 - 1つの箇条書きに複数の事実を詰め込まない（1行1情報）。長くなる項目は小見出し＋短い箇条書きに分解する
 - `#N` 形式の issue/PR 参照はタイトル付きリンクに展開され行が膨らむため、文中に埋め込まず参照専用の行（1行1リンク）に分ける
 - スコープを限定・分割する場合（ファイル種別・段階など）は、その理由と順序の根拠を本文に記録する（「なぜこれだけ先行するか」を後から追えるようにする）
 
-## Notes
+### 簡潔さ
 
-- **Same Repository**: Parent and child issues must exist in the same repository
-- **Template Priority**: Project templates (`.github/ISSUE_TEMPLATE/`) → Organization templates → No template
-- **Assignee**: Do NOT auto-assign `@me` or any user unless the user explicitly requests it. Assignees should be set only when the user specifies who should handle the issue.
-- **Confirmation**: Always confirm destructive operations (close, delete) using AskUserQuestion tool
+本文の目安は 35 行程度（対象外・受け入れ条件まで含めた実例ベース）。大きく超える場合は、参考リンクへの切り出しや issue 分割を検討する。以下は書かない:
+
+- 変数名・リソース名・設定値・実装コード例などの具体的な実装詳細
+- 実装手順のステップ書き（スコープ分割時の順序記録とは別）
+- 設計案・調査結果の全文転載（要点のみ書き、詳細は参考リンクに委ねる）
