@@ -6,7 +6,7 @@ license: MIT
 
 # GitHub Activity Report
 
-You interpret the user's date/period and repository; the bundled script fetches the activities and emits the report. Handle the interpretive parts yourself and leave the deterministic parts to the script.
+You interpret the user's date/period and repository yourself; leave fetching the activities and building the report to the bundled script.
 
 ## Step 1: Get the reference time
 

@@ -11,8 +11,6 @@ PR 本文はリポジトリ・組織が定めたテンプレートに従って�
 このスキルはテンプレート実体を持たない。プロジェクト側のテンプレートが唯一の正本であり、
 スキル側に写しを置くと必ず陳腐化するため。
 
-ユーザーが PR の作成を依頼したとき、または `gh pr create` を使うときに以下の手順を踏む。
-
 ## 0. stacked PR にすべきか見る
 
 現ブランチの**分岐元が未マージ PR のブランチ**なら、その PR に重ねた stacked PR にできる。
@@ -32,6 +30,7 @@ gh pr list --state open --json number,headRefName --jq '.[] | [.number,.headRefN
   最初の行を取ると `--base` が最下層になって中間層の差分まで抱き込む。
   `git merge-base --is-ancestor <候補X> <候補Y>` が真なら Y が上。`--base` と `gh stack link` に渡すのは直近の親その一つだけ
 - **親ブランチを rebase / amend した後は検出できない**（共通の commit が消えるため）。既に stack にしてあるなら `gh stack view --json` が正本
+- **親ブランチが先に進んでいて判定が偽になるときは、親の先端へ rebase してから判定し直す**（差分を今回の作業だけに保つ）
 - 親の PR ブランチを HEAD に merge しただけでも検出される（偽陽性）。機械判定を鵜呑みにしない
 - 該当したら**ユーザーに確認を取る**。承認を得るまで `gh stack` は実行しない（`gh stack link` は GitHub 上の PR のベースを書き換えうる外向き操作）
 - 無関係な作業は重ねない。stack は一直線（親1・子1）で、積んだ上位は下位のマージ待ちに拘束される
@@ -43,6 +42,9 @@ gh pr create --base <下位のブランチ> --title "タイトル" --body-file <
 gh stack link <下位PR番号> <このブランチ>   # 既存 PR を stack に繋ぐ。本文は書き換えられない
 ```
 
+- **`gh stack link` を省かない**。GitHub 側へのスタック登録はこれだけが行う。省くと base だけ合った「ただの依存 PR」になり、下位のマージ時に base が自動追い替えされず、上位が main に届かないまま親ブランチへ吸い込まれる
+  - 登録は実行後に PR 画面のスタック表示で確認する。`gh stack view --json` に PR 番号が出るのはローカル追跡情報にすぎず、登録の証拠にならない
+  - 逆に link 直後の `gh stack view` は「not part of a stack」と返すが、これは追跡が未取り込みなだけで失敗ではない。`gh stack checkout <stack番号>` で GitHub から取り込めば表示される（link を再実行しない）
 - **`gh stack submit --auto` に新規 PR を作らせない**。`gh stack` が作った PR はタイトルも本文も自動生成になり、テンプレートが当たらない（既存 PR の本文は触られない）
 - `sync` / `rebase` / `merge` / コンフリクト復旧 / exit code など**以降の操作は gh-stack スキルに従う**（仕様が動くため写しを置かない）
 - 使えないとき:
@@ -54,12 +56,14 @@ gh stack link <下位PR番号> <このブランチ>   # 既存 PR を stack に�
 上から順に探し、最初に見つかったものを使う。
 
 ```bash
-# リポジトリ内（複数テンプレート形式が最優先）
-find .github/PULL_REQUEST_TEMPLATE -name '*.md' 2>/dev/null
+# リポジトリ根から探す（worktree や下位ディレクトリにいると相対パスは静かに空振りする）
+# 複数テンプレート形式が最優先
+ROOT=$(git rev-parse --show-toplevel)
+find "$ROOT/.github/PULL_REQUEST_TEMPLATE" -name '*.md' 2>/dev/null
 for p in .github/pull_request_template.md .github/PULL_REQUEST_TEMPLATE.md \
          pull_request_template.md PULL_REQUEST_TEMPLATE.md \
          docs/pull_request_template.md docs/PULL_REQUEST_TEMPLATE.md; do
-  [ -f "$p" ] && echo "found: $p" && break
+  [ -f "$ROOT/$p" ] && echo "found: $ROOT/$p" && break
 done
 ```
 
@@ -75,7 +79,7 @@ done
 ```
 
 - `.github/PULL_REQUEST_TEMPLATE/` に複数ある場合は、どれを使うかユーザーに確認する
-- **どちらにも無い場合のみ**、`## 概要` `## 変更内容` `## 確認したこと` の3節で簡潔に書く。勝手に長いテンプレートを創作しない
+- **どちらにも無い場合のみ**、`## 概要` `## 変更内容` `## 確認したこと` の3節で簡潔に書く（issue の節は無いので、関連 issue があれば `closes #番号` を `## 概要` の冒頭に置く）。勝手に長いテンプレートを創作しない（無い場合は上の探索が無出力のまま exit 1 で返ることがある。探索の失敗ではない）
 
 ## 2. 本文を組み立てる
 

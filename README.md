@@ -8,6 +8,7 @@
 | スキル | 説明 | インストール |
 |---|---|---|
 | [pr-code-review](skills/pr-code-review/) | GitHub PRをレビューして結果をPRに投稿 | `gh skill install k-ibaraki/my-agent-skills pr-code-review` |
+| [pr-code-review-jev](skills/pr-code-review-jev/) | pr-code-review の観点選定と採点の一部を TypeSafe の Jev に任せ、費用と時間を抑える（macOS・TypeSafe の API キーが必要） | `gh skill install k-ibaraki/my-agent-skills pr-code-review-jev` |
 | [create-issue](skills/create-issue/) | GitHub Issueの作成・編集・改善 | `gh skill install k-ibaraki/my-agent-skills create-issue` |
 | [ddg-search](skills/ddg-search/) | DuckDuckGo APIでWeb検索 | `gh skill install k-ibaraki/my-agent-skills ddg-search` |
 | [github-activity-report](skills/github-activity-report/) | GitHub活動レポート生成（スタンドアップ等に） | `gh skill install k-ibaraki/my-agent-skills github-activity-report` |

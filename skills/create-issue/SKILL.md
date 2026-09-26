@@ -9,15 +9,19 @@ description: >
   than prescribing exact steps. Closing includes the case where `gh issue close` is an embedded
   step of a larger task (e.g. recording a decision on an issue) — consult the "Issue Closing"
   rules before any close. Scope is the issue body only: posting issue comments needs no special
-  handling, so do not invoke this skill for that. Automatically handles gh-sub-issue extension
-  installation.
+  handling, so do not invoke this skill for that. Handles gh-sub-issue extension installation
+  when sub-issues are involved.
 allowed-tools: Bash, AskUserQuestion
 license: MIT
 ---
 
 # GitHub Issue Management
 
+Any issue body you write — a new issue, or rewriting/improving/enriching an existing one — must apply the **Issue Body Writing Guidelines** (last section) while drafting it. A template dictates structure; the guidelines dictate what goes under each heading.
+
 ## Prerequisites
+
+Only when the task actually involves sub-issues (linking, unlinking, creating children):
 
 ```bash
 if ! gh extension list | grep -q "yahsan2/gh-sub-issue"; then
@@ -37,15 +41,15 @@ gh issue create \
 
 **Template handling**: Project templates (`.github/ISSUE_TEMPLATE/`) → organization templates → no template. If templates exist, list them (`.md` / `.yml`) and offer their use.
 
-**`.yml` (issue form) templates need different handling than `.md` templates.** `gh issue create --template <name>` only works non-interactively for plain `.md` templates; for `.yml` issue forms it opens an interactive/browser prompt instead of composing with `--title`/`--body`. For a `.yml` template:
+**`.yml` (issue form) templates:** `gh issue create --template <name>` only works non-interactively for plain `.md` templates; for `.yml` issue forms it opens an interactive/browser prompt instead of composing with `--title`/`--body`. For a `.yml` template:
 
 1. Read the file (`cat .github/ISSUE_TEMPLATE/<name>.yml`) to learn its section structure (the `body:` list's `attributes.label` values and any `attributes.value` placeholders).
 2. Construct `--body` yourself, mirroring those headings, via a heredoc passed to `gh issue create --title ... --body "$(cat <<'EOF' ... EOF)"`.
 3. Decide whether to apply the template's `title:` prefix (eg. `[タスク]: `) by matching how comparable existing issues — same nature, same tracking method — are titled. Ask the user if the repo is inconsistent.
-4. Apply the **Issue Body Writing Guidelines** below for each section's content — the template dictates structure, the guidelines dictate what goes under each heading.
+4. Fill each section's content per the **Issue Body Writing Guidelines**.
 5. Check the template's own `labels:` values against the rule below before passing them — forms routinely name labels (eg. `triage`) that were never created in the repo.
 
-**Verify labels before using them.** `gh issue create --label "a,b"` fails the entire command (including title/body) if *any* named label doesn't exist — there's no partial success. Run `gh label list` first, or catch the `not found` error and retry without the offending label.
+**Verify labels before using them.** `gh issue create --label "a,b"` fails the entire command (including title/body) if *any* named label doesn't exist — there's no partial success. Run `gh label list` first, or catch the `not found` error and retry without the offending label (see Error Handling).
 
 ## Sub-Issues
 
@@ -72,8 +76,6 @@ gh issue edit <issue-number> \
   --add-assignee "@username" \
   --milestone <number>
 ```
-
-Rewriting, improving, or enriching a body means applying the **Issue Body Writing Guidelines** before writing any content.
 
 Do NOT auto-assign `@me` or anyone else unless the user explicitly says who should handle the issue.
 
@@ -159,6 +161,6 @@ issue の本文は、開発者が単なる作業者にならないよう、**何
 
 本文の目安は 35 行程度（対象外・受け入れ条件まで含めた実例ベース）。大きく超える場合は、参考リンクへの切り出しや issue 分割を検討する。以下は書かない:
 
-- 変数名・リソース名・設定値・実装コード例などの具体的な実装詳細
+- 変数名・リソース名・設定値・実装コード例などの具体的な実装詳細（担当者が判断する領域）
 - 実装手順のステップ書き（スコープ分割時の順序記録とは別）
 - 設計案・調査結果の全文転載（要点のみ書き、詳細は参考リンクに委ねる）
