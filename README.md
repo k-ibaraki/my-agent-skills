@@ -15,6 +15,7 @@
 | [grill-me](skills/grill-me/) | 依頼の前提・目的に疑問点を問いかけて研ぎ澄ます | `gh skill install k-ibaraki/my-agent-skills grill-me` |
 | [ja-markdown-bold](skills/ja-markdown-bold/) | 日本語Markdownで太字が描画されない問題を防ぐ書き方ルール | `gh skill install k-ibaraki/my-agent-skills ja-markdown-bold` |
 | [kiro-delegate](skills/kiro-delegate/) | kiro-cli にタスクを委譲 | `gh skill install k-ibaraki/my-agent-skills kiro-delegate` |
+| [pptx-ja](skills/pptx-ja/) | 日本語の PowerPoint 資料で `pptx` スキルを使う際の補助（lang 属性・和文フォント・サイズ・実機レンダリング QA。Anthropic 公式 pptx スキル・macOS・PowerPoint for Mac・poppler が必要） | `gh skill install k-ibaraki/my-agent-skills pptx-ja` |
 | [pr-template](skills/pr-template/) | PRテンプレートを使ったPR作成 | `gh skill install k-ibaraki/my-agent-skills pr-template` |
 | [self-review](skills/self-review/) | PR前のセルフコードレビュー | `gh skill install k-ibaraki/my-agent-skills self-review` |
 | [zenn-search](skills/zenn-search/) | Zennの技術記事を検索 | `gh skill install k-ibaraki/my-agent-skills zenn-search` |
