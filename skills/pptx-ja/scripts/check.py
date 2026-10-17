@@ -7,12 +7,16 @@
   python3 check.py deck.pptx --allow ①㈱          # ユーザーが使用を指示した文字は範囲外文字チェックから除く
   python3 check.py deck.pptx --source 元資料.pptx --replace "–=－"  # 意図して置き換えた文字は、元資料側を置き換えてから比べる
 
-検査項目（NG が1件でもあれば終了コード 1）:
-  lang 混入     lang="en-US" の run に英数字以外の文字が混じっていないか
-  範囲外文字    CP932 で表せない文字が無いか
-  最小サイズ    スライドの sz の最小値が 1200（12pt）以上か
-  ダミー文言    テンプレートのダミー文言・プレースホルダーの文言が残っていないか
-  突き合わせ    --source を付けた場合、元資料の段落・表の行が新資料に揃っているか
+検査項目（NG が1件でもあれば終了コード 1。「要確認」は数えない）:
+  Content-Type  拡張子 .pptx なのに presentationml.template.main+xml のまま残っていないか
+                （validate.py は見逃す。展開済みフォルダでは要確認として出す）
+  lang 混入     lang="en-US" の run に英数字以外の文字が混じっていないか（スライド・ノート・グラフ）
+  範囲外文字    CP932 で表せない文字が無いか（スライド・ノート・グラフ）
+  最小サイズ    sz の最小値が 1200（12pt）以上か（スライド・グラフ）
+  ダミー文言    テンプレートのダミー文言が残っていないか（スライドのみ。普通の文言にも反応するため要確認）
+  突き合わせ    --source を付けた場合、元資料の段落・表の行が新資料に揃っているか（スライドのみ）
+
+レイアウト・マスターは対象外（テンプレートの見本の文言「マスター タイトルの書式設定」等が入っていて誤検知になるため）。
 """
 import argparse
 import html
@@ -25,16 +29,33 @@ DUMMY = re.compile(r"\bx{3,}\b|lorem|ipsum|\bTODO|\[insert|this.*(page|slide).*l
                    r"|^タイトル$|サンプル|YYYY.*MM.*DD|親譲りの無鉄砲", re.I)
 
 
-def slides(path):
-    """(名前, XML) をスライド番号順に返す。pptx/potx ファイルと展開済みフォルダの両方を受け付ける。"""
+def read_parts(path, pattern):
+    """パス名が pattern に一致する部品の (名前, XML) を番号順に返す。pptx/potx ファイルと展開済みフォルダの両方を受け付ける。"""
     p = Path(path)
+    # 名前で絞り込んでから読む（画像などのバイナリは読まない）
     if p.is_dir():
-        items = [(f.name, f.read_text(encoding="utf-8")) for f in (p / "ppt/slides").glob("slide*.xml")]
+        files = [f for f in p.rglob("*.xml") if re.fullmatch(pattern, f.relative_to(p).as_posix())]
+        items = [(f.name, f.read_text(encoding="utf-8")) for f in files]
     else:
         z = zipfile.ZipFile(p)
-        items = [(n.split("/")[-1], z.read(n).decode("utf-8")) for n in z.namelist()
-                 if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)]
+        items = [(n.split("/")[-1], z.read(n).decode("utf-8")) for n in z.namelist() if re.fullmatch(pattern, n)]
     return sorted(items, key=lambda t: int(re.search(r"\d+", t[0]).group()))
+
+
+def slides(path):
+    return read_parts(path, r"ppt/slides/slide\d+\.xml")
+
+
+def notes_and_charts(path):
+    return read_parts(path, r"ppt/notesSlides/notesSlide\d+\.xml") + read_parts(path, r"ppt/charts/chart\d+\.xml")
+
+
+def content_type(path):
+    p = Path(path)
+    if p.is_dir():
+        f = p / "[Content_Types].xml"
+        return f.read_text(encoding="utf-8") if f.exists() else ""
+    return zipfile.ZipFile(p).read("[Content_Types].xml").decode("utf-8")
 
 
 def text_of(xml):
@@ -63,11 +84,12 @@ def main():
     ap.add_argument("--replace", action="append", default=[], help="旧=新。突き合わせの前に元資料側の文字列を置き換える")
     a = ap.parse_args()
     items = slides(a.deck)
+    texts = items + notes_and_charts(a.deck)  # lang 混入・範囲外文字はノートとグラフも見る
     ng = 0
 
-    def report(title, found):
+    def report(title, found, warn=False):
         nonlocal ng
-        print(f"[{'OK' if not found else 'NG'}] {title}: {len(found)}件")
+        print(f"[{'OK' if not found else '要確認' if warn else 'NG'}] {title}: {len(found)}件")
         uniq = {}
         for f in found:  # 同じ指摘はまとめて件数で出す
             uniq[f] = uniq.get(f, 0) + 1
@@ -75,10 +97,22 @@ def main():
             print("   ", f, f"（×{n}）" if n > 1 else "")
         if len(uniq) > 30:
             print(f"    ほか{len(uniq) - 30}種類")
-        ng += len(found)
+        if not warn:
+            ng += len(found)
+
+    if "presentationml.template.main+xml" in content_type(a.deck):
+        p = Path(a.deck)
+        if p.is_dir():
+            report("Content-Type が template のまま（.pptx で書き出すなら presentation に書き換える）", [str(p)], warn=True)
+        elif p.suffix.lower() == ".pptx":
+            report("Content-Type が template のまま（PowerPoint で開けない）", [p.name])
+        else:
+            report("Content-Type（.potx のまま書き出す、テンプレート自体の修正）", [])
+    else:
+        report("Content-Type", [])
 
     lang = []
-    for name, x in items:
+    for name, x in texts:
         for r in re.findall(r"<a:r>(.*?)</a:r>", x, re.S):
             m = re.search(r'lang="([\w-]+)"', r)
             t = text_of(r)
@@ -87,8 +121,9 @@ def main():
     report("lang 混入", lang)
 
     bad = []
-    for name, x in items:
-        for t in re.findall(r"<a:t(?:\s[^>]*)?>([^<]*)</a:t>", x):
+    for name, x in texts:
+        # グラフの系列名・項目名は <c:v> に入る
+        for t in re.findall(r"<a:t(?:\s[^>]*)?>([^<]*)</a:t>", x) + re.findall(r"<c:v>([^<]*)</c:v>", x):
             t = html.unescape(t)
             out = []
             for c in t:
@@ -103,7 +138,8 @@ def main():
     report("範囲外文字", bad)
 
     small = []
-    for name, x in items:
+    # グラフの目盛り・データラベル・タイトルの文字サイズも sz で入る
+    for name, x in items + read_parts(a.deck, r"ppt/charts/chart\d+\.xml"):
         for v in re.findall(r'\ssz="(\d+)"', x):
             if int(v) < 1200:
                 small.append(f"{name} sz={v}")
@@ -111,7 +147,7 @@ def main():
 
     dummy = [f"{name} {p[:40]!r}" for name, x in items
              for p in (text_of(q) for q in re.findall(r"<a:p>.*?</a:p>", x, re.S)) if p.strip() and DUMMY.search(p)]
-    report("ダミー文言", dummy)
+    report("ダミー文言（普通の文言にも反応するので目で判断する）", dummy, warn=True)
 
     if a.source:
         src = slides(a.source)
