@@ -34,24 +34,7 @@ license: MIT
 - Latin限定フォント(Arial, Calibri, Cambria, Times New Roman, Courier New, Bookman Old Style, Century Schoolbook, Georgia, Arial Black, Trebuchet MS, Impact, Palatino, Garamond, Consolas等、`pptx`スキルのTypography節に挙がるもの)は日本語グリフを持たないため、日本語テキストに使わない
 - フォントは**`<a:latin>`だけでなく`<a:ea>`(East Asian)も必ずペアで明示**する(テーマ参照でもよい)。`<a:ea typeface=""/>`のような空欄や`<a:ea>`省略のまま`<a:latin>`だけ変更するのは事故の元(和文が未定義のまま残り、環境依存の代替フォントで表示される)
 - pptxgenjsで新規作成すると、全runが`lang="en-US"`になり、`<a:ea>`に中国語簡体字の`charset="-122"`が付く。生成後に、和文を含むrunを`lang="ja-JP"`に直し、`<a:latin>`/`<a:ea>`/`<a:cs>`の`pitchFamily`・`charset`属性を削除する。pptxgenjsでは和欧混在の文を1run(`ja-JP`)にしてよい
-- `pptx`スキルの「Structured decks」で作る場合、`pres.theme`に渡したフォントはテーマの`<a:latin>`にしか入らない。`<a:ea>`は空欄のまま残り、見出し用(`majorFont`)の`<a:font script="Jpan">`は游ゴシック Lightになる。`applyTheme()`の後に、テーマの`<a:ea>`とJpanを採用した和文フォントに書き換える(runにはフォントを書かず、テーマから継承させる):
-
-```js
-// async 関数の中で実行する(await を使うため)
-const fs = require("fs");
-const path = require("path");
-// jszip は pptxgenjs の依存として入っている。pptxgenjs が共有の場所に入っている環境(Claude のクラウド環境等)でも動くよう、pptxgenjs 経由で探す
-const JSZip = require(require.resolve("jszip", { paths: [path.dirname(require.resolve("pptxgenjs"))] }));
-const FONT = "游ゴシック";
-const zip = await JSZip.loadAsync(fs.readFileSync("deck.pptx"));
-for (const p of Object.keys(zip.files).filter(n => /^ppt\/theme\/theme\d+\.xml$/.test(n))) {
-  const xml = (await zip.file(p).async("string"))
-    .replace(/<a:ea typeface="[^"]*"\/>/g, `<a:ea typeface="${FONT}"/>`)
-    .replace(/<a:font script="Jpan" typeface="[^"]*"\/>/g, `<a:font script="Jpan" typeface="${FONT}"/>`);
-  zip.file(p, xml);
-}
-fs.writeFileSync("deck.pptx", await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-```
+- `pptx`スキルの「Structured decks」で作る場合、`pres.theme`に渡したフォントはテーマの`<a:latin>`にしか入らない。`<a:ea>`は空欄のまま残り、見出し用(`majorFont`)の`<a:font script="Jpan">`は游ゴシック Lightになる。`applyTheme()`の後に、テーマの`<a:ea>`とJpanを採用した和文フォントに書き換える(runにはフォントを書かず、テーマから継承させる)。書き換えるスクリプトは[structured-decks.md](structured-decks.md)にある。
 - python-pptxの`run.font.name`は`<a:latin>`しか変更しない。和文を制御するには`<a:ea>`要素を別途明示する(XML直接編集が確実)
 - 記号の一部は、PowerPointが`<a:latin>`のフォントで描こうとし、そこに字形がないと代替フォント(ＭＳ ゴシック等)で表示される。書き出したPDFを`pdffonts`で調べ、意図しないフォントがあれば原因の文字を特定し(PyMuPDFの`get_text("dict")`でspanごとのフォントが分かる)、その文字だけ別runにして`<a:latin>`も採用した和文フォントにする。空のセルや文字のない図形も`<a:endParaRPr>`にフォントを明示する。箇条書きの記号も`<a:buFont>`のフォントで描かれるため、意図しないフォントの原因になる
 
