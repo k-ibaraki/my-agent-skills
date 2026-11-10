@@ -31,20 +31,24 @@ fi
 
 ## Issue Creation
 
+**Show the draft first.** Before `gh issue create`, present the title and body (and labels) to the user and get approval of that text. Approval to proceed with the work is not approval of the content.
+
+**Pass the body via `--body-file`.** Write the body to a file first, then run `gh issue create` as a separate command (an inline body makes the permission prompt too long to read, and a blocked call loses the heredoc with it). Create one issue per command and give `--body-file` a literal absolute path, not a shell variable, so hooks that check the body can read the file.
+
 ```bash
 gh issue create \
   --title "Issue title" \
-  --body "Detailed description" \
+  --body-file /tmp/issue-body.md \
   --label "label1,label2" \
   --milestone <number>
 ```
 
-**Template handling**: Project templates (`.github/ISSUE_TEMPLATE/`) → organization templates → no template. If templates exist, list them (`.md` / `.yml`) and offer their use.
+**Template handling**: Project templates (`.github/ISSUE_TEMPLATE/`) → organization templates → no template. If templates exist, list them (`.md` / `.yml`) and offer their use. When a template's headings don't match the guideline sections (e.g. タスク / 資料 / 作業), keep the template's headings and place the background, expected work, and acceptance criteria under the closest heading (e.g. タスク).
 
 **`.yml` (issue form) templates:** `gh issue create --template <name>` only works non-interactively for plain `.md` templates; for `.yml` issue forms it opens an interactive/browser prompt instead of composing with `--title`/`--body`. For a `.yml` template:
 
 1. Read the file (`cat .github/ISSUE_TEMPLATE/<name>.yml`) to learn its section structure (the `body:` list's `attributes.label` values and any `attributes.value` placeholders).
-2. Construct `--body` yourself, mirroring those headings, via a heredoc passed to `gh issue create --title ... --body "$(cat <<'EOF' ... EOF)"`.
+2. Write the body yourself, mirroring those headings, to a file and pass it with `--body-file`.
 3. Decide whether to apply the template's `title:` prefix (eg. `[タスク]: `) by matching how comparable existing issues — same nature, same tracking method — are titled. Ask the user if the repo is inconsistent.
 4. Fill each section's content per the **Issue Body Writing Guidelines**.
 5. Check the template's own `labels:` values against the rule below before passing them — forms routinely name labels (eg. `triage`) that were never created in the repo.
@@ -54,7 +58,7 @@ gh issue create \
 ## Sub-Issues
 
 ```bash
-ISSUE_URL=$(gh issue create --title "Sub-issue title" --body "Description")
+ISSUE_URL=$(gh issue create --title "Sub-issue title" --body-file /tmp/issue-body.md)
 ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oE '/([0-9]+)/?$' | grep -oE '[0-9]+')
 gh sub-issue add <parent-number> "$ISSUE_NUM"
 
@@ -67,10 +71,12 @@ Parent and child must live in the same repository.
 
 ## Issue Editing
 
+The same draft-first rule applies: show the new title/body before `gh issue edit`.
+
 ```bash
 gh issue edit <issue-number> \
   --title "New title" \
-  --body "New description" \
+  --body-file /tmp/issue-body.md \
   --add-label "new-label1,new-label2" \
   --remove-label "old-label" \
   --add-assignee "@username" \
@@ -81,7 +87,7 @@ Do NOT auto-assign `@me` or anyone else unless the user explicitly says who shou
 
 ## Issue Closing
 
-**Important**: Always confirm with the user (AskUserQuestion) before closing. Judge closability by whether the completion condition is met:
+**Important**: Confirm with the user (AskUserQuestion) before closing, unless the user has explicitly told you to close that specific issue. Judge closability by whether the completion condition is met:
 
 - issue の完了がリポジトリへの変更（コード・ドキュメント・規約化など）を伴う場合、その変更がマージされる前に手動クローズしない。PR 本文に `closes #N` と書き、マージによる自動クローズに委ねる（決定をコメントに記録した時点でのクローズは早計）
 - 手動クローズしてよいのは、変更を伴わず issue 上の記録だけで完結する場合（重複・見送り・調査のみ 等）

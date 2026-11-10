@@ -40,10 +40,8 @@ Unicode句読点として扱われるため、日本語文中では以下が**�
 python3 ~/.claude/hooks/ja-check/check-md-bold.py < 対象ファイル
 ```
 
-スクリプトは `str | None` 型注釈を使っており **Python 3.10 以上が必須**。
-`python3 --version` が 3.9 以下（例: macOS 標準の `/usr/bin/python3`）の環境では
-`TypeError` で落ちるため、3.10 以上の `python3`（pyenv・mise・Homebrew 版など）を
-明示的に指定して実行すること。
+スクリプトは Python 3.10 以上が必須。macOS 標準の `/usr/bin/python3`（3.9）では `TypeError` で落ちるので、
+3.10 以上の `python3`（mise・pyenv・Homebrew 版など）を明示して実行する。
 
 NG行が出力されたら（exit 1）、ルール1か2で書き直してから確定する。
 なお同じ判定は ja-check フックが `.md` への書き込み時と `gh issue/pr` 投稿前
