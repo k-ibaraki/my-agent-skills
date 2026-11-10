@@ -34,24 +34,7 @@ license: MIT
 - Latin限定フォント(Arial, Calibri, Cambria, Times New Roman, Courier New, Bookman Old Style, Century Schoolbook, Georgia, Arial Black, Trebuchet MS, Impact, Palatino, Garamond, Consolas等、`pptx`スキルのTypography節に挙がるもの)は日本語グリフを持たないため、日本語テキストに使わない
 - フォントは**`<a:latin>`だけでなく`<a:ea>`(East Asian)も必ずペアで明示**する(テーマ参照でもよい)。`<a:ea typeface=""/>`のような空欄や`<a:ea>`省略のまま`<a:latin>`だけ変更するのは事故の元(和文が未定義のまま残り、環境依存の代替フォントで表示される)
 - pptxgenjsで新規作成すると、全runが`lang="en-US"`になり、`<a:ea>`に中国語簡体字の`charset="-122"`が付く。生成後に、和文を含むrunを`lang="ja-JP"`に直し、`<a:latin>`/`<a:ea>`/`<a:cs>`の`pitchFamily`・`charset`属性を削除する。pptxgenjsでは和欧混在の文を1run(`ja-JP`)にしてよい
-- `pptx`スキルの「Structured decks」で作る場合、`pres.theme`に渡したフォントはテーマの`<a:latin>`にしか入らない。`<a:ea>`は空欄のまま残り、見出し用(`majorFont`)の`<a:font script="Jpan">`は游ゴシック Lightになる。`applyTheme()`の後に、テーマの`<a:ea>`とJpanを採用した和文フォントに書き換える(runにはフォントを書かず、テーマから継承させる):
-
-```js
-// async 関数の中で実行する(await を使うため)
-const fs = require("fs");
-const path = require("path");
-// jszip は pptxgenjs の依存として入っている。pptxgenjs が共有の場所に入っている環境(Claude のクラウド環境等)でも動くよう、pptxgenjs 経由で探す
-const JSZip = require(require.resolve("jszip", { paths: [path.dirname(require.resolve("pptxgenjs"))] }));
-const FONT = "游ゴシック";
-const zip = await JSZip.loadAsync(fs.readFileSync("deck.pptx"));
-for (const p of Object.keys(zip.files).filter(n => /^ppt\/theme\/theme\d+\.xml$/.test(n))) {
-  const xml = (await zip.file(p).async("string"))
-    .replace(/<a:ea typeface="[^"]*"\/>/g, `<a:ea typeface="${FONT}"/>`)
-    .replace(/<a:font script="Jpan" typeface="[^"]*"\/>/g, `<a:font script="Jpan" typeface="${FONT}"/>`);
-  zip.file(p, xml);
-}
-fs.writeFileSync("deck.pptx", await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-```
+- `pptx`スキルの「Structured decks」で作る場合、`pres.theme`に渡したフォントはテーマの`<a:latin>`にしか入らない。`<a:ea>`は空欄のまま残り、見出し用(`majorFont`)の`<a:font script="Jpan">`は游ゴシック Lightになる。`applyTheme()`の後に、テーマの`<a:ea>`とJpanを採用した和文フォントに書き換える(runにはフォントを書かず、テーマから継承させる)。書き換えるスクリプトは[structured-decks.md](structured-decks.md)にある。
 - python-pptxの`run.font.name`は`<a:latin>`しか変更しない。和文を制御するには`<a:ea>`要素を別途明示する(XML直接編集が確実)
 - 記号の一部は、PowerPointが`<a:latin>`のフォントで描こうとし、そこに字形がないと代替フォント(ＭＳ ゴシック等)で表示される。書き出したPDFを`pdffonts`で調べ、意図しないフォントがあれば原因の文字を特定し(PyMuPDFの`get_text("dict")`でspanごとのフォントが分かる)、その文字だけ別runにして`<a:latin>`も採用した和文フォントにする。空のセルや文字のない図形も`<a:endParaRPr>`にフォントを明示する。箇条書きの記号も`<a:buFont>`のフォントで描かれるため、意図しないフォントの原因になる
 
@@ -119,7 +102,8 @@ PowerPointは日本語を文字単位(禁則のみ)で折り返すため、単�
 
 ## 既存ファイルへの追記時の運用
 
-- ユーザーが既にPowerPointで手動修正している場合は**その現行ファイルをそのまま母体にして**作業する(ゼロから再生成しない)
+- ユーザーが既にPowerPointで手動修正している場合は**その現行ファイルをそのまま母体にして**作業する(ゼロから再生成しない)。上書きの前に、現行ファイルの`docProps/core.xml`(更新日時・リビジョン)を前回書き出したときと比べ、変わっていればユーザーが手直ししたものとみなし、そのファイルに対して編集する
+- 編集の元にする既存資料のスライドマスターが社内テンプレートに由来する場合は、そのテンプレートのガイドライン(文字色・部品集など)を確認し、新しく作る部分はそれに従う。テンプレートの所在が分からなければユーザーに確認する
 - ファイルを直接上書きする前に、`backup/`配下にタイムスタンプ付きでコピーを控える
 - 波ダッシュ(〜 U+301C)と全角チルダ(～ U+FF5E)など見分けにくい文字は、既存資料内の文字をプログラムで抽出して再利用し、これらを含む文字列を置換のアンカーにしない
 - 別の顧客向けの資料を母体にするときは、スライド本文のほかに`docProps/app.xml`(旧スライドの題名)・`docProps/thumbnail.jpeg`(旧表紙の縮小画像)・`ppt/commentAuthors.xml`(コメント作成者の個人名・ID)にも前の案件の情報が残るため、差し替えるか削除する
@@ -136,8 +120,10 @@ PowerPointは日本語を文字単位(禁則のみ)で折り返すため、単�
 ```
 
 - 初回実行時にmacOSのオートメーション許可ダイアログが出ることがある
-- スクリプトを書き換えるときは次を崩さない。**PDFで書き出す**(`save as PNG`は無音で失敗する)。**対象は`full name`で特定し、`active presentation`で取らない**(コンテナ外のpptxは開けないことがあり、エラーも出ない。そのとき前面にあるユーザーの別資料を保存せずに閉じてしまう。実際に起きた)
-- `pdffonts qa/render.pdf` で採用したフォント(PDF上は英語名。例: MS-PGothic)だけが埋め込まれているか確認すると、フォント指定漏れを機械的に検出できる。テンプレートの部品が意図して使っている記号フォント(箇条書きの行頭文字のWingdings等)は除く
+- `render.sh`が失敗したら(コピーや書き出しの`Operation not permitted`など)、LibreOffice等で代替せず、エラーの内容をそのままユーザーに報告して指示を待つ。原因を推測して手順を変えない
+- AppleEventのタイムアウト(-1712)は、PowerPointのダイアログ待ちで起きることがある。報告の際に、PowerPointの画面にダイアログが出ていないか確認を依頼する
+- スクリプトを書き換えるときは次を崩さない。**PDFで書き出す**(`save as PNG`は無音で失敗する)。**複製は出力先に置き、`open -a`で開く**(PowerPointのコンテナ`~/Library/Containers/com.microsoft.Powerpoint/`へのコピーはOSの権限で拒否されることがある)。**対象は`full name`で特定し、`active presentation`で取らない**(開けなかったときにエラーが出ず、前面にあるユーザーの別資料を保存せずに閉じてしまう。実際に起きた)
+- `pdffonts qa/render.pdf` で採用したフォント(PDF上は英語名。例: MS-PGothic)だけが埋め込まれているか確認すると、フォント指定漏れを機械的に検出できる。テンプレートの部品が意図して使っている記号フォント(箇条書きの行頭文字に使うWingdingsや、「•」に使うArial等)は除く
 
 ### チェック項目(`pptx`スキルのQA項目に追加)
 

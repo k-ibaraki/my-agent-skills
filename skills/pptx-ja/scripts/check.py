@@ -129,10 +129,15 @@ def main():
             for c in t:
                 if c in a.allow:
                     continue
+                # Python の cp932 は互換のため「〜」(U+301C)・「−」(U+2212)・半角の ¢£¬ なども encode だけは通す。
+                # Windows の CP932 で往復できる文字（～・－・￠￡￢）だけを範囲内とみなし、置き換え先を添えて報告する
                 try:
-                    c.encode("cp932")
+                    rt = c.encode("cp932").decode("cp932")
                 except UnicodeEncodeError:
                     out.append(c)
+                    continue
+                if rt != c:
+                    out.append(f"{c}→{rt}")
             if out:
                 bad.append(f"{name} {t[:30]!r} {out}")
     report("範囲外文字", bad)

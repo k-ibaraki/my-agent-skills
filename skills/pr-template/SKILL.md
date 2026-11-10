@@ -72,14 +72,15 @@ done
 ```bash
 # 引数を省くと gh は fork 元を返す。PR の向き先リポジトリを明示すること
 OWNER=$(gh repo view <owner>/<repo> --json owner --jq .owner.login)
-for p in .github/pull_request_template.md .github/PULL_REQUEST_TEMPLATE.md; do
+for p in .github/pull_request_template.md .github/PULL_REQUEST_TEMPLATE.md \
+         pull_request_template.md PULL_REQUEST_TEMPLATE.md; do
   body=$(gh api "repos/$OWNER/.github/contents/$p" --jq '.content' 2>/dev/null) || continue
   [ -n "$body" ] && echo "$body" | base64 -d && break
 done
 ```
 
 - `.github/PULL_REQUEST_TEMPLATE/` に複数ある場合は、どれを使うかユーザーに確認する
-- **どちらにも無い場合のみ**、`## 概要` `## 変更内容` `## 確認したこと` の3節で簡潔に書く（issue の節は無いので、関連 issue があれば `closes #番号` を `## 概要` の冒頭に置く）。勝手に長いテンプレートを創作しない（無い場合は上の探索が無出力のまま exit 1 で返ることがある。探索の失敗ではない）
+- **どちらにも無い場合のみ**、`## 概要` `## 変更内容` `## 確認したこと` の3節で簡潔に書く（issue の節は無いので、関連 issue があれば `closes #番号` を `## 概要` の冒頭に置く）。勝手に長いテンプレートを創作しない（無い場合は上の探索が無出力のまま exit 1 で返ることがある。探索の失敗ではない）。ただし、直近のマージ済み PR（`gh pr list --state merged -L 3`）の見出しがそろっていれば、3節ではなくそれに合わせる
 
 ## 2. 本文を組み立てる
 
